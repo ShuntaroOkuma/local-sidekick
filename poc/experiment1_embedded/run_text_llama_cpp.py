@@ -19,6 +19,7 @@ from llama_cpp import Llama
 from shared.camera import CameraCapture
 from shared.features import FeatureTracker, extract_frame_features
 from shared.metrics import MetricsCollector
+from shared.model_config import get_text_model
 from shared.prompts import TEXT_SYSTEM_PROMPT, format_text_prompt
 from shared.rule_classifier import classify_camera_text
 
@@ -27,6 +28,31 @@ DEFAULT_MODEL_PATH: Final[str] = str(
 )
 DEFAULT_DURATION: Final[int] = 60
 DEFAULT_INTERVAL: Final[int] = 5
+
+
+def _resolve_model_path(args: argparse.Namespace) -> str:
+    """Resolve the model path from explicit --model-path or --model-tier.
+
+    Falls back to lightweight tier with a warning when the recommended
+    model file has not been downloaded yet.
+    """
+    if args.model_path != DEFAULT_MODEL_PATH:
+        return args.model_path
+
+    tier_path = get_text_model("llama_cpp", tier=args.model_tier)
+    if Path(tier_path).exists():
+        return tier_path
+
+    if args.model_tier == "recommended":
+        print(
+            f"Warning: Recommended model not found at {tier_path}. "
+            "Falling back to lightweight (3B) model."
+        )
+        fallback = get_text_model("llama_cpp", tier="lightweight")
+        if Path(fallback).exists():
+            return fallback
+
+    return args.model_path
 
 
 def parse_args() -> argparse.Namespace:
@@ -38,6 +64,13 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=DEFAULT_MODEL_PATH,
         help=f"Path to GGUF model file (default: {DEFAULT_MODEL_PATH})",
+    )
+    parser.add_argument(
+        "--model-tier",
+        type=str,
+        choices=["recommended", "lightweight"],
+        default="lightweight",
+        help="Model tier: recommended (7B) or lightweight (3B, default)",
     )
     parser.add_argument(
         "--duration",
@@ -101,7 +134,8 @@ def create_shutdown_handler(should_run: list[bool]):
 def main() -> None:
     args = parse_args()
 
-    model_path = Path(args.model_path)
+    resolved = _resolve_model_path(args)
+    model_path = Path(resolved)
     if not model_path.exists():
         print(f"Error: Model file not found at {model_path}")
         print("Run 'python download_models.py' first.")
