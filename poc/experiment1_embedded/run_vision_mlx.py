@@ -84,8 +84,8 @@ def run_vision_inference(
     response = vlm_generate(
         model,
         processor,
-        image,
-        VISION_USER_PROMPT,
+        prompt=VISION_USER_PROMPT,
+        image=image,
         max_tokens=max_tokens,
         temperature=0.1,
     )
