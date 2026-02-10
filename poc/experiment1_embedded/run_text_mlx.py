@@ -13,6 +13,7 @@ import time
 from typing import Final
 
 import mlx_lm
+from mlx_lm.sample_utils import make_sampler
 
 from shared.camera import CameraCapture
 from shared.features import FeatureTracker, extract_frame_features
@@ -88,7 +89,7 @@ def run_inference(model, tokenizer, user_prompt: str, max_tokens: int) -> dict:
         tokenizer,
         prompt=formatted_prompt,
         max_tokens=max_tokens,
-        temp=0.1,
+        sampler=make_sampler(temp=0.1),
     )
 
     try:
