@@ -131,7 +131,7 @@ def classify_camera_text(features: dict) -> Optional[ClassificationResult]:
     ):
         yaw = abs(head_pose.get("yaw", 0)) if isinstance(head_pose, dict) else abs(head_pose.yaw)
         pitch = abs(head_pose.get("pitch", 0)) if isinstance(head_pose, dict) else abs(head_pose.pitch)
-        if yaw < 10 and pitch < 10:
+        if yaw < 25 and pitch < 25:
             return ClassificationResult(
                 state="focused",
                 confidence=0.9,

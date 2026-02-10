@@ -16,8 +16,8 @@ TEXT_SYSTEM_PROMPT = """You are a state classifier. Analyze facial data JSON and
 
 RULES (check in order, return FIRST match):
 1. face_detected is false -> state="away", confidence=1.0
-2. ANY of: perclos_drowsy is true, yawning is true, ear_average < 0.22, head_pose.pitch > 15 -> state="drowsy"
-3. ANY of: |head_pose.yaw| > 20, |head_pose.pitch| > 20, head_yaw_std > 8, gaze_off_screen_ratio > 0.3 -> state="distracted"
+2. ANY of: perclos_drowsy is true, yawning is true, ear_average < 0.22, head_pose.pitch > 25 -> state="drowsy"
+3. ANY of: |head_pose.yaw| > 25, |head_pose.pitch| > 25, head_yaw_std > 8, gaze_off_screen_ratio > 0.3 -> state="distracted"
 4. Otherwise -> state="focused"
 
 Output ONLY: {"state":"...","confidence":0.0-1.0,"reasoning":"brief"}
