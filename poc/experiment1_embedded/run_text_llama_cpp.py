@@ -22,7 +22,7 @@ from shared.metrics import MetricsCollector
 from shared.prompts import TEXT_SYSTEM_PROMPT, format_text_prompt
 
 DEFAULT_MODEL_PATH: Final[str] = str(
-    Path.home() / ".cache" / "local-sidekick" / "models" / "qwen2.5-3b-instruct-q4_k_m.gguf"
+    Path(__file__).parent.parent / "models" / "qwen2.5-3b-instruct-q4_k_m.gguf"
 )
 DEFAULT_DURATION: Final[int] = 60
 DEFAULT_INTERVAL: Final[int] = 5
