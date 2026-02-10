@@ -22,61 +22,14 @@ from pathlib import Path
 from typing import Sequence
 
 from experiment3_pcusage.monitor import PCUsageMonitor, UsageSnapshot
+from shared.metrics import MetricsCollector
+from shared.prompts import PC_USAGE_SYSTEM_PROMPT, format_pc_usage_prompt
 
 
-# --- Prompt ---
-
-PC_USAGE_SYSTEM_PROMPT = """You are a work-state classifier. Based on the PC usage data provided, classify the user's current state as one of:
-- "focused": Sustained activity in a single application (especially code editor, terminal, or document editor), consistent keyboard/mouse input
-- "distracted": Frequent app switching, browsing multiple non-work apps, short bursts of activity across different applications
-- "idle": No keyboard/mouse input for extended periods, high idle_seconds value
-
-Respond ONLY with a JSON object in this exact format:
-{"state": "focused|distracted|idle", "confidence": 0.0-1.0, "reasoning": "brief explanation"}
-
-Do not include any other text."""
-
-PC_USAGE_USER_TEMPLATE = """Classify the user's work state based on this PC usage snapshot:
-
-{snapshot_json}
-
-Previous snapshots summary (last {window_count} readings):
-- Average keyboard events/min: {avg_keyboard}
-- Average mouse events/min: {avg_mouse}
-- Total app switches in window: {total_app_switches}
-- Unique apps in window: {unique_apps}
-- Average idle seconds: {avg_idle}"""
-
-
-def build_analysis_prompt(
-    snapshot: UsageSnapshot,
-    history: Sequence[UsageSnapshot],
-) -> str:
-    """Build the user prompt from a snapshot and recent history."""
-    snapshot_json = json.dumps(snapshot.to_dict(), indent=2)
-
-    if history:
-        avg_keyboard = sum(s.keyboard_events_per_min for s in history) / len(history)
-        avg_mouse = sum(s.mouse_events_per_min for s in history) / len(history)
-        avg_idle = sum(s.idle_seconds for s in history) / len(history)
-        total_switches = max(s.app_switches_in_window for s in history)
-        unique = max(s.unique_apps_in_window for s in history)
-    else:
-        avg_keyboard = snapshot.keyboard_events_per_min
-        avg_mouse = snapshot.mouse_events_per_min
-        avg_idle = snapshot.idle_seconds
-        total_switches = snapshot.app_switches_in_window
-        unique = snapshot.unique_apps_in_window
-
-    return PC_USAGE_USER_TEMPLATE.format(
-        snapshot_json=snapshot_json,
-        window_count=len(history),
-        avg_keyboard=f"{avg_keyboard:.1f}",
-        avg_mouse=f"{avg_mouse:.1f}",
-        total_app_switches=total_switches,
-        unique_apps=unique,
-        avg_idle=f"{avg_idle:.1f}",
-    )
+def build_analysis_prompt(snapshot: UsageSnapshot) -> str:
+    """Build the user prompt from a snapshot."""
+    usage_json = json.dumps(snapshot.to_dict(), indent=2)
+    return format_pc_usage_prompt(usage_json)
 
 
 # --- LLM Backends ---
@@ -342,7 +295,8 @@ def run_analysis(
     signal.signal(signal.SIGINT, signal_handler)
 
     results: list[dict] = []
-    history: list[UsageSnapshot] = []
+    metrics = MetricsCollector()
+    metrics.start()
     monitor.start()
 
     try:
@@ -356,14 +310,9 @@ def run_analysis(
 
             # Take snapshot
             snapshot = monitor.take_snapshot()
-            history.append(snapshot)
-
-            # Keep history bounded
-            if len(history) > 20:
-                history = history[-20:]
 
             # Build prompt and analyze
-            user_prompt = build_analysis_prompt(snapshot, history)
+            user_prompt = build_analysis_prompt(snapshot)
             analysis_count += 1
 
             print(f"[{elapsed:.0f}s] Analysis #{analysis_count}")
@@ -373,10 +322,11 @@ def run_analysis(
             print(f"  App switches: {snapshot.app_switches_in_window}, Unique apps: {snapshot.unique_apps_in_window}")
 
             try:
-                result = analyze_fn(
-                    system_prompt=PC_USAGE_SYSTEM_PROMPT,
-                    user_prompt=user_prompt,
-                )
+                with metrics.measure_llm():
+                    result = analyze_fn(
+                        system_prompt=PC_USAGE_SYSTEM_PROMPT,
+                        user_prompt=user_prompt,
+                    )
                 print(f"  -> State: {result.state} (confidence: {result.confidence:.2f})")
                 print(f"     Reasoning: {result.reasoning}")
                 print(f"     Latency: {result.latency_ms:.0f}ms")
@@ -408,8 +358,9 @@ def run_analysis(
     finally:
         monitor.stop()
 
-    # Print summary
+    # Print summaries
     _print_summary(results)
+    metrics.get_summary().print_report()
 
     return results
 
