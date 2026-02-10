@@ -120,7 +120,7 @@ def analyze_llama_cpp(
     if model_path is None:
         models_dir = Path(__file__).parent.parent / "models"
         model_path = str(
-            models_dir / "qwen2.5-3b-instruct-gguf" / "qwen2.5-3b-instruct-q4_k_m.gguf"
+            models_dir / "qwen2.5-3b-instruct-q4_k_m.gguf"
         )
 
     # Use module-level cache to avoid reloading the model
@@ -170,7 +170,7 @@ def analyze_mlx(
 
     if model_path is None:
         models_dir = Path(__file__).parent.parent / "models"
-        model_path = str(models_dir / "qwen2.5-3b-instruct-mlx")
+        model_path = str(models_dir / "qwen2.5-3b-instruct-4bit")
 
     model, tokenizer = _get_mlx_model(model_path)
 
@@ -259,7 +259,6 @@ def run_analysis(
         model_path = (
             Path(__file__).parent.parent
             / "models"
-            / "qwen2.5-3b-instruct-gguf"
             / "qwen2.5-3b-instruct-q4_k_m.gguf"
         )
         if not model_path.exists():
@@ -269,7 +268,7 @@ def run_analysis(
 
     if backend == "mlx":
         model_path = (
-            Path(__file__).parent.parent / "models" / "qwen2.5-3b-instruct-mlx"
+            Path(__file__).parent.parent / "models" / "qwen2.5-3b-instruct-4bit"
         )
         if not (model_path / "config.json").exists():
             print(f"[ERROR] MLX model not found: {model_path}")

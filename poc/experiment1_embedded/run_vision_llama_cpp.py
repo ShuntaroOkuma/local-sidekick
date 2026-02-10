@@ -22,10 +22,10 @@ from shared.metrics import MetricsCollector
 from shared.prompts import VISION_SYSTEM_PROMPT, VISION_USER_PROMPT
 
 DEFAULT_MODEL_PATH: Final[str] = str(
-    Path.home() / ".cache" / "local-sidekick" / "models" / "qwen2-vl-2b-instruct-q4_k_m.gguf"
+    Path(__file__).parent.parent / "models" / "qwen2-vl-2b-instruct-q4_k_m.gguf"
 )
 DEFAULT_CLIP_MODEL_PATH: Final[str] = str(
-    Path.home() / ".cache" / "local-sidekick" / "models" / "qwen2-vl-2b-instruct-mmproj.gguf"
+    Path(__file__).parent.parent / "models" / "qwen2-vl-2b-instruct-mmproj.gguf"
 )
 DEFAULT_DURATION: Final[int] = 120
 DEFAULT_INTERVAL: Final[int] = 15
