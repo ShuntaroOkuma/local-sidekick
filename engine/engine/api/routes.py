@@ -240,6 +240,81 @@ async def update_settings(update: SettingsUpdate) -> SettingsResponse:
     )
 
 
+# --- Notification endpoints ---
+
+
+@router.get("/notifications")
+async def get_notifications(
+    start: Optional[float] = Query(None),
+    end: Optional[float] = Query(None),
+    limit: int = Query(100, ge=1, le=1000),
+) -> list:
+    """Get notifications within a time range."""
+    store = _engine_state.get("history_store")
+    if store is None:
+        raise HTTPException(status_code=503, detail="History store not available")
+    return await store.get_notifications(start_time=start, end_time=end, limit=limit)
+
+
+@router.get("/notifications/pending")
+async def get_pending_notifications() -> list:
+    """Get pending (unresponded) notifications."""
+    store = _engine_state.get("history_store")
+    if store is None:
+        return []
+    # Get recent notifications (last 5 minutes) without user_action
+    import time as _time
+
+    start = _time.time() - 300
+    all_notifs = await store.get_notifications(start_time=start)
+    return [n for n in all_notifs if not n.get("user_action")]
+
+
+@router.post("/notifications/{notification_id}/respond")
+async def respond_to_notification(
+    notification_id: int,
+    body: dict,
+) -> dict:
+    """Record user response to a notification."""
+    store = _engine_state.get("history_store")
+    if store is None:
+        raise HTTPException(status_code=503, detail="History store not available")
+    action = body.get("action", "dismissed")
+    await store.update_notification_action(notification_id, action)
+    return {"status": "ok", "action": action}
+
+
+# --- Report proxy endpoint ---
+
+
+@router.post("/reports/generate")
+async def generate_report(
+    date: Optional[str] = Query(None),
+) -> dict:
+    """Generate daily report. Proxies to Cloud Run if sync is enabled,
+    otherwise computes a local summary."""
+    store = _engine_state.get("history_store")
+    if store is None:
+        raise HTTPException(status_code=503, detail="History store not available")
+
+    if date is None:
+        date = datetime.date.today().isoformat()
+
+    from engine.history.aggregator import compute_daily_stats
+
+    stats = await compute_daily_stats(store, date)
+
+    # For MVP, return local stats as the "report"
+    # TODO: proxy to Cloud Run when sync_enabled
+    stats["report"] = {
+        "summary": f"本日の作業統計: 集中 {stats.get('focused_minutes', 0):.0f}分",
+        "highlights": [],
+        "concerns": [],
+        "tomorrow_tip": "明日も頑張りましょう！",
+    }
+    return stats
+
+
 @router.post("/engine/start", response_model=EngineActionResponse)
 async def start_engine() -> EngineActionResponse:
     """Start the monitoring engine."""

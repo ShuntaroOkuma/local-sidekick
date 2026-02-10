@@ -58,6 +58,29 @@ _latest_pc_state: Optional[ClassificationResult] = None
 _history_store = HistoryStore()
 _integrator = StateIntegrator()
 _notification_engine: Optional[NotificationEngine] = None
+_shared_llm_backend = None  # Shared LLM instance to avoid loading model twice
+_llm_lock = asyncio.Lock()  # Lock for thread-safe LLM access
+
+
+async def _get_shared_llm(config: EngineConfig):
+    """Get or create the shared LLM backend (lazy-loaded, singleton)."""
+    global _shared_llm_backend
+
+    if _shared_llm_backend is not None:
+        return _shared_llm_backend
+
+    try:
+        from engine.estimation.llm_backend import LLMBackend
+        backend = LLMBackend(
+            model_tier=config.model_tier,
+            n_ctx=config.llm_n_ctx,
+        )
+        await asyncio.to_thread(backend.load)
+        _shared_llm_backend = backend
+        return _shared_llm_backend
+    except Exception as e:
+        logger.warning("Failed to load shared LLM backend: %s", e)
+        return None
 
 
 def _create_notification_engine(config: EngineConfig) -> NotificationEngine:
@@ -96,8 +119,6 @@ async def _camera_loop(config: EngineConfig) -> None:
         logger.error("Failed to import camera modules: %s", e)
         return
 
-    llm_backend = None
-
     try:
         camera = CameraCapture(camera_index=config.camera_index)
         camera.open()
@@ -111,7 +132,7 @@ async def _camera_loop(config: EngineConfig) -> None:
     try:
         while _should_monitor:
             try:
-                frame_result = camera.read_frame()
+                frame_result = await asyncio.to_thread(camera.read_frame)
             except RuntimeError:
                 await asyncio.sleep(0.5)
                 continue
@@ -132,30 +153,16 @@ async def _camera_loop(config: EngineConfig) -> None:
                 if rule_result is not None:
                     _latest_camera_state = rule_result
                 else:
-                    # LLM fallback
-                    if llm_backend is None:
-                        try:
-                            from engine.estimation.llm_backend import LLMBackend
-                            from engine.estimation.prompts import (
-                                TEXT_SYSTEM_PROMPT,
-                                format_text_prompt,
-                            )
-
-                            llm_backend = LLMBackend(
-                                model_tier=config.model_tier,
-                                n_ctx=config.llm_n_ctx,
-                            )
-                            llm_backend.load()
-                        except Exception as e:
-                            logger.warning("LLM backend unavailable: %s", e)
-                            # Default to focused with low confidence
-                            _latest_camera_state = ClassificationResult(
-                                state="focused",
-                                confidence=0.5,
-                                reasoning="LLM unavailable, defaulting",
-                                source="fallback",
-                            )
-                            continue
+                    # LLM fallback using shared instance
+                    llm = await _get_shared_llm(config)
+                    if llm is None:
+                        _latest_camera_state = ClassificationResult(
+                            state="focused",
+                            confidence=0.5,
+                            reasoning="LLM unavailable, defaulting",
+                            source="fallback",
+                        )
+                        continue
 
                     from engine.estimation.prompts import (
                         TEXT_SYSTEM_PROMPT,
@@ -166,11 +173,12 @@ async def _camera_loop(config: EngineConfig) -> None:
                     user_prompt = format_text_prompt(features_json)
 
                     try:
-                        result = await asyncio.to_thread(
-                            llm_backend.classify,
-                            TEXT_SYSTEM_PROMPT,
-                            user_prompt,
-                        )
+                        async with _llm_lock:
+                            result = await asyncio.to_thread(
+                                llm.classify,
+                                TEXT_SYSTEM_PROMPT,
+                                user_prompt,
+                            )
                         _latest_camera_state = ClassificationResult(
                             state=result.get("state", "unknown"),
                             confidence=result.get("confidence", 0.5),
@@ -183,8 +191,6 @@ async def _camera_loop(config: EngineConfig) -> None:
             await asyncio.sleep(config.camera_frame_interval)
     finally:
         camera.close()
-        if llm_backend is not None:
-            llm_backend.unload()
 
 
 # --- PC monitoring ---
@@ -206,7 +212,6 @@ async def _pc_monitor_loop(config: EngineConfig) -> None:
     monitor = PCUsageMonitor(window_seconds=60)
     monitor.start()
 
-    llm_backend = None
     last_estimation = 0.0
 
     try:
@@ -222,24 +227,16 @@ async def _pc_monitor_loop(config: EngineConfig) -> None:
                 if rule_result is not None:
                     _latest_pc_state = rule_result
                 else:
-                    # LLM fallback for PC
-                    if llm_backend is None:
-                        try:
-                            from engine.estimation.llm_backend import LLMBackend
-                            llm_backend = LLMBackend(
-                                model_tier=config.model_tier,
-                                n_ctx=config.llm_n_ctx,
-                            )
-                            llm_backend.load()
-                        except Exception as e:
-                            logger.warning("LLM backend unavailable for PC: %s", e)
-                            _latest_pc_state = ClassificationResult(
-                                state="focused",
-                                confidence=0.5,
-                                reasoning="LLM unavailable, defaulting",
-                                source="fallback",
-                            )
-                            continue
+                    # LLM fallback using shared instance
+                    llm = await _get_shared_llm(config)
+                    if llm is None:
+                        _latest_pc_state = ClassificationResult(
+                            state="focused",
+                            confidence=0.5,
+                            reasoning="LLM unavailable, defaulting",
+                            source="fallback",
+                        )
+                        continue
 
                     from engine.estimation.prompts import (
                         PC_USAGE_SYSTEM_PROMPT,
@@ -250,11 +247,12 @@ async def _pc_monitor_loop(config: EngineConfig) -> None:
                     user_prompt = format_pc_usage_prompt(usage_json)
 
                     try:
-                        result = await asyncio.to_thread(
-                            llm_backend.classify,
-                            PC_USAGE_SYSTEM_PROMPT,
-                            user_prompt,
-                        )
+                        async with _llm_lock:
+                            result = await asyncio.to_thread(
+                                llm.classify,
+                                PC_USAGE_SYSTEM_PROMPT,
+                                user_prompt,
+                            )
                         _latest_pc_state = ClassificationResult(
                             state=result.get("state", "unknown"),
                             confidence=result.get("confidence", 0.5),
@@ -267,8 +265,6 @@ async def _pc_monitor_loop(config: EngineConfig) -> None:
             await asyncio.sleep(config.pc_poll_interval)
     finally:
         monitor.stop()
-        if llm_backend is not None:
-            llm_backend.unload()
 
 
 # --- Integration + notification + history loop ---
@@ -366,7 +362,7 @@ async def start_monitoring() -> None:
 
 async def stop_monitoring() -> None:
     """Stop all monitoring background tasks."""
-    global _should_monitor
+    global _should_monitor, _shared_llm_backend
 
     _should_monitor = False
     set_engine_state("monitoring", False)
@@ -378,6 +374,14 @@ async def stop_monitoring() -> None:
 
     await asyncio.gather(*_monitoring_tasks, return_exceptions=True)
     _monitoring_tasks.clear()
+
+    # Unload shared LLM backend
+    if _shared_llm_backend is not None:
+        try:
+            await asyncio.to_thread(_shared_llm_backend.unload)
+        except Exception:
+            pass
+        _shared_llm_backend = None
 
     logger.info("All monitoring tasks stopped.")
 
