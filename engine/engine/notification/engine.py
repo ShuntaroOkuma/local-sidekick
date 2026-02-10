@@ -2,7 +2,7 @@
 
 Implements three notification types with cooldown and daily limits:
 - drowsy: continuous drowsy state for 120s, cooldown 15min
-- distracted: continuous distracted state for 120s, cooldown 15min
+- distracted: continuous distracted state for 120s, cooldown 20min
 - over_focus: 80+ minutes focused in last 90 minutes, cooldown 30min
 """
 
@@ -56,7 +56,7 @@ class NotificationEngine:
         over_focus_window_minutes: int = 90,
         over_focus_threshold_minutes: int = 80,
         drowsy_cooldown_minutes: int = 15,
-        distracted_cooldown_minutes: int = 15,
+        distracted_cooldown_minutes: int = 20,
         over_focus_cooldown_minutes: int = 30,
         max_notifications_per_day: int = 6,
     ) -> None:
