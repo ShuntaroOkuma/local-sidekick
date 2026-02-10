@@ -265,11 +265,11 @@ class HistoryStore:
 
         return {
             "date": row[0],
-            "total_focused_minutes": row[1],
-            "total_drowsy_minutes": row[2],
-            "total_distracted_minutes": row[3],
-            "total_away_minutes": row[4],
-            "total_idle_minutes": row[5],
+            "focused_minutes": row[1],
+            "drowsy_minutes": row[2],
+            "distracted_minutes": row[3],
+            "away_minutes": row[4],
+            "idle_minutes": row[5],
             "notification_count": row[6],
             "notification_accepted": row[7],
             "report_text": row[8],

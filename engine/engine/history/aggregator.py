@@ -89,11 +89,11 @@ async def compute_daily_stats(
 
     return {
         "date": date,
-        "total_focused_minutes": round(state_seconds["focused"] / 60.0, 1),
-        "total_drowsy_minutes": round(state_seconds["drowsy"] / 60.0, 1),
-        "total_distracted_minutes": round(state_seconds["distracted"] / 60.0, 1),
-        "total_away_minutes": round(state_seconds["away"] / 60.0, 1),
-        "total_idle_minutes": round(state_seconds["idle"] / 60.0, 1),
+        "focused_minutes": round(state_seconds["focused"] / 60.0, 1),
+        "drowsy_minutes": round(state_seconds["drowsy"] / 60.0, 1),
+        "distracted_minutes": round(state_seconds["distracted"] / 60.0, 1),
+        "away_minutes": round(state_seconds["away"] / 60.0, 1),
+        "idle_minutes": round(state_seconds["idle"] / 60.0, 1),
         "notification_count": notification_count,
         "notification_accepted": notification_accepted,
         "focus_blocks": focus_blocks,
