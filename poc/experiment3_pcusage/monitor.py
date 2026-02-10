@@ -193,7 +193,7 @@ def get_active_app() -> str:
         result = subprocess.run(
             [
                 "osascript", "-e",
-                'tell application "System Events" to get name of '
+                'tell application "System Events" to get displayed name of '
                 "first application process whose frontmost is true",
             ],
             capture_output=True,
@@ -408,10 +408,12 @@ class PCUsageMonitor:
 
         self._update_app_history(now, current_app)
 
-        # Compute windowed stats
-        apps_in_window = [app for _, app in self._app_history]
-        app_switches = max(0, len(apps_in_window) - 1)
-        unique_apps = len(set(apps_in_window))
+        # Compute app switch stats using a shorter window (30s)
+        # so the metric reflects recent behavior, not stale history
+        app_switch_window = 30.0
+        recent_apps = [app for ts, app in self._app_history if ts > now - app_switch_window]
+        app_switches = max(0, len(recent_apps) - 1)
+        unique_apps = len(set(recent_apps)) if recent_apps else 0
 
         windowed = self._counters.get_windowed_stats(now)
         seconds_since_last_keyboard = (
@@ -422,7 +424,7 @@ class PCUsageMonitor:
             now - windowed["last_mouse_time"]
             if windowed["last_mouse_time"] > 0 else elapsed
         )
-        is_idle = idle_seconds > 30.0
+        is_idle = idle_seconds > 60.0
 
         return UsageSnapshot(
             timestamp=now,
@@ -434,7 +436,7 @@ class PCUsageMonitor:
             mouse_events_per_min=round(mouse_total / elapsed_minutes, 1),
             app_switches_in_window=app_switches,
             unique_apps_in_window=unique_apps,
-            app_history_window=tuple(apps_in_window[-10:]),
+            app_history_window=tuple(app for _, app in list(self._app_history)[-10:]),
             keyboard_events_in_window=windowed["keyboard_events_in_window"],
             mouse_events_in_window=windowed["mouse_events_in_window"],
             keyboard_rate_window=windowed["keyboard_rate_window"],
