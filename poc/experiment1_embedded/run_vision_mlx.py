@@ -81,7 +81,7 @@ def run_vision_inference(
     """Run vision inference with mlx-vlm and return parsed result."""
     from mlx_vlm import generate as vlm_generate
 
-    response = vlm_generate(
+    result = vlm_generate(
         model,
         processor,
         prompt=VISION_USER_PROMPT,
@@ -89,6 +89,9 @@ def run_vision_inference(
         max_tokens=max_tokens,
         temperature=0.1,
     )
+
+    # mlx_vlm returns (text, stats_dict) tuple
+    response = result[0] if isinstance(result, tuple) else result
 
     try:
         return json.loads(response)
