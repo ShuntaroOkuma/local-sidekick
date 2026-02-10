@@ -19,6 +19,7 @@ from llama_cpp.llama_chat_format import Llava15ChatHandler
 
 from shared.camera import CameraCapture
 from shared.metrics import MetricsCollector
+from shared.model_config import get_vision_model
 from shared.prompts import VISION_SYSTEM_PROMPT, VISION_USER_PROMPT
 
 DEFAULT_MODEL_PATH: Final[str] = str(
@@ -29,6 +30,32 @@ DEFAULT_CLIP_MODEL_PATH: Final[str] = str(
 )
 DEFAULT_DURATION: Final[int] = 120
 DEFAULT_INTERVAL: Final[int] = 15
+
+
+def _resolve_model_path(args: argparse.Namespace) -> str:
+    """Resolve the model path from explicit --model-path or --model-tier.
+
+    Falls back to the legacy 2B model with a warning when the recommended
+    7B model file has not been downloaded yet.
+    """
+    if args.model_path != DEFAULT_MODEL_PATH:
+        return args.model_path
+
+    tier = "recommended" if args.model_tier == "recommended" else "not_recommended"
+    tier_path = get_vision_model("llama_cpp", tier=tier)
+    if Path(tier_path).exists():
+        return tier_path
+
+    if args.model_tier == "recommended":
+        print(
+            f"Warning: Recommended model not found at {tier_path}. "
+            "Falling back to legacy (2B) model."
+        )
+        fallback = get_vision_model("llama_cpp", tier="not_recommended")
+        if Path(fallback).exists():
+            return fallback
+
+    return args.model_path
 
 
 def parse_args() -> argparse.Namespace:
@@ -46,6 +73,13 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=DEFAULT_CLIP_MODEL_PATH,
         help=f"Path to CLIP/mmproj GGUF file (default: {DEFAULT_CLIP_MODEL_PATH})",
+    )
+    parser.add_argument(
+        "--model-tier",
+        type=str,
+        choices=["recommended", "lightweight"],
+        default="lightweight",
+        help="Model tier: recommended (7B) or lightweight (2B legacy, default)",
     )
     parser.add_argument(
         "--duration",
@@ -134,7 +168,8 @@ def create_shutdown_handler(should_run: list[bool]):
 def main() -> None:
     args = parse_args()
 
-    model_path = Path(args.model_path)
+    resolved = _resolve_model_path(args)
+    model_path = Path(resolved)
     if not model_path.exists():
         print(f"Error: Model file not found at {model_path}")
         print("Run 'python download_models.py' first.")
