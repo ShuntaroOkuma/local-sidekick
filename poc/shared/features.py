@@ -317,10 +317,28 @@ def estimate_head_pose(
         yaw = math.atan2(-rotation_matrix[2, 0], sy)
         roll = 0.0
 
+    pitch_deg = math.degrees(pitch)
+    yaw_deg = math.degrees(yaw)
+    roll_deg = math.degrees(roll)
+
+    # Normalize pitch and roll: solvePnP returns angles in the model-to-camera
+    # coordinate frame. The 3D face model faces +Z while the camera faces -Z,
+    # causing a ~180° offset in pitch (and sometimes roll) when the face is
+    # roughly frontal. Unwrap to the intuitive [-90, 90] range.
+    if pitch_deg > 90:
+        pitch_deg -= 180
+    elif pitch_deg < -90:
+        pitch_deg += 180
+
+    if roll_deg > 90:
+        roll_deg -= 180
+    elif roll_deg < -90:
+        roll_deg += 180
+
     return HeadPose(
-        pitch=math.degrees(pitch),
-        yaw=math.degrees(yaw),
-        roll=math.degrees(roll),
+        pitch=pitch_deg,
+        yaw=yaw_deg,
+        roll=roll_deg,
     )
 
 
@@ -453,13 +471,19 @@ class FeatureTracker:
         else:
             eyes_half_closed_ratio = None
 
-        # Head pose statistics
+        # Head pose statistics — use a shorter sub-window (15s) so that
+        # transient glances don't keep the "distracted" signal sticky for
+        # the full 60s PERCLOS window.
+        head_window = 15.0
+        head_cutoff = features.timestamp - head_window
+        recent_face_frames = [f for f in face_frames if f.timestamp > head_cutoff]
+
         yaw_values = [
-            f.head_pose.yaw for f in face_frames
+            f.head_pose.yaw for f in recent_face_frames
             if f.head_pose is not None
         ]
         pitch_values = [
-            f.head_pose.pitch for f in face_frames
+            f.head_pose.pitch for f in recent_face_frames
             if f.head_pose is not None
         ]
 
@@ -478,20 +502,20 @@ class FeatureTracker:
 
         # Head movement count (>5 degree change between consecutive frames)
         head_movement_count = 0
-        pose_frames = [f for f in face_frames if f.head_pose is not None]
+        pose_frames = [f for f in recent_face_frames if f.head_pose is not None]
         for i in range(1, len(pose_frames)):
             prev = pose_frames[i - 1].head_pose
             curr = pose_frames[i].head_pose
             if abs(curr.yaw - prev.yaw) > 5.0 or abs(curr.pitch - prev.pitch) > 5.0:
                 head_movement_count += 1
 
-        # Gaze off-screen ratio
+        # Gaze off-screen ratio (also using shorter window)
         if yaw_values:
             off_screen_count = sum(
-                1 for f in face_frames
-                if f.head_pose is not None and (abs(f.head_pose.yaw) > 15 or abs(f.head_pose.pitch) > 15)
+                1 for f in recent_face_frames
+                if f.head_pose is not None and (abs(f.head_pose.yaw) > 25 or abs(f.head_pose.pitch) > 25)
             )
-            gaze_off_screen_ratio = off_screen_count / len(face_frames)
+            gaze_off_screen_ratio = off_screen_count / len(recent_face_frames)
         else:
             gaze_off_screen_ratio = None
 
