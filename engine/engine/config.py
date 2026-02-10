@@ -57,7 +57,7 @@ class EngineConfig:
     # Notification settings
     max_notifications_per_day: int = 6
     drowsy_cooldown_minutes: int = 15
-    distracted_cooldown_minutes: int = 15
+    distracted_cooldown_minutes: int = 20
     over_focus_cooldown_minutes: int = 30
     drowsy_trigger_seconds: int = 120
     distracted_trigger_seconds: int = 120
