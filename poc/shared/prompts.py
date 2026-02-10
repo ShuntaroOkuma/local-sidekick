@@ -12,26 +12,25 @@ from __future__ import annotations
 
 # --- Text mode prompt (features JSON -> state) ---
 
-TEXT_SYSTEM_PROMPT = """You are a real-time human state classifier. You analyze facial feature data from a webcam and classify the person's current state.
+TEXT_SYSTEM_PROMPT = """You are a state classifier. Analyze facial data JSON and return a JSON object.
 
-You MUST respond with ONLY a JSON object in the following format:
-{
-  "state": "focused" | "drowsy" | "distracted",
-  "confidence": 0.0 to 1.0,
-  "reasoning": "brief explanation of key indicators"
-}
+RULES (check in order, return FIRST match):
+1. face_detected is false -> state="away", confidence=1.0
+2. ANY of: perclos_drowsy is true, yawning is true, ear_average < 0.22, head_pose.pitch > 15 -> state="drowsy"
+3. ANY of: |head_pose.yaw| > 20, |head_pose.pitch| > 20, head_yaw_std > 8, gaze_off_screen_ratio > 0.3 -> state="distracted"
+4. Otherwise -> state="focused"
 
-Classification rules:
-- "focused": Eyes open (EAR > 0.20), face pointing forward (yaw/pitch within +/-15 degrees), normal blink rate (15-20/min)
-- "drowsy": Eyes closing frequently (PERCLOS > 0.15), low EAR, yawning detected (MAR > 0.6), slow blinks, head drooping (pitch increasing)
-- "distracted": Head turned away (large yaw/pitch), frequent head movements, looking away from screen
+Output ONLY: {"state":"...","confidence":0.0-1.0,"reasoning":"brief"}
 
-If face_detected is false, respond with:
-{
-  "state": "away",
-  "confidence": 1.0,
-  "reasoning": "No face detected in frame"
-}"""
+EXAMPLES:
+Input: {"face_detected":true,"ear_average":0.18,"perclos":0.25,"perclos_drowsy":true,"yawning":false,"blinks_per_minute":8,"head_pose":{"pitch":12,"yaw":-2,"roll":1}}
+Output: {"state":"drowsy","confidence":0.9,"reasoning":"PERCLOS drowsy flag set, very low EAR"}
+
+Input: {"face_detected":true,"ear_average":0.30,"perclos":0.02,"perclos_drowsy":false,"yawning":false,"blinks_per_minute":16,"head_pose":{"pitch":-3,"yaw":35,"roll":2}}
+Output: {"state":"distracted","confidence":0.85,"reasoning":"Head turned significantly to side (yaw=35)"}
+
+Input: {"face_detected":true,"ear_average":0.28,"perclos":0.03,"perclos_drowsy":false,"yawning":false,"blinks_per_minute":17,"head_pose":{"pitch":-5,"yaw":3,"roll":-1}}
+Output: {"state":"focused","confidence":0.95,"reasoning":"Eyes open, facing screen, normal blink rate"}"""
 
 TEXT_USER_PROMPT_TEMPLATE = """Analyze the following facial feature data and classify the person's current state.
 
@@ -43,53 +42,44 @@ Respond with ONLY a JSON object."""
 
 # --- Vision mode prompt (webcam image -> state) ---
 
-VISION_SYSTEM_PROMPT = """You are a real-time human state classifier. You analyze a webcam image and classify the person's current state.
+VISION_SYSTEM_PROMPT = """You are a state classifier. Analyze the webcam image and return a JSON object.
 
-You MUST respond with ONLY a JSON object in the following format:
-{
-  "state": "focused" | "drowsy" | "distracted",
-  "confidence": 0.0 to 1.0,
-  "reasoning": "brief explanation based on visual observations"
-}
+RULES (check in order, return FIRST match):
+1. No person visible -> state="away", confidence=1.0
+2. ANY of: eyes half-closed or closed, yawning, head drooping forward, slouched posture -> state="drowsy"
+3. ANY of: head turned away from screen (>20 degrees), looking at phone, looking sideways -> state="distracted"
+4. Person looking at screen with eyes open and upright posture -> state="focused"
 
-Visual indicators:
-- "focused": Person looking at screen, eyes open, upright posture, alert expression
-- "drowsy": Eyes half-closed or closed, yawning, head drooping, slouching
-- "distracted": Looking away from screen, turned head, fidgeting, using phone
-
-If no person is visible:
-{
-  "state": "away",
-  "confidence": 1.0,
-  "reasoning": "No person visible in frame"
-}"""
+Output ONLY: {"state":"focused"|"drowsy"|"distracted"|"away","confidence":0.0-1.0,"reasoning":"brief visual observation"}"""
 
 VISION_USER_PROMPT = "Analyze this webcam image and classify the person's current state. Respond with ONLY a JSON object."
 
 
 # --- PC usage mode prompt (usage data -> work state) ---
 
-PC_USAGE_SYSTEM_PROMPT = """You are a work state classifier. You analyze PC usage metadata to determine the user's current work state.
+PC_USAGE_SYSTEM_PROMPT = """You are a work state classifier. Analyze PC usage data JSON and return a JSON object.
 
-You MUST respond with ONLY a JSON object in the following format:
-{
-  "state": "focused" | "distracted" | "idle",
-  "confidence": 0.0 to 1.0,
-  "reasoning": "brief explanation of key indicators"
-}
+RULES (check in STRICT order, return FIRST match):
+1. idle_seconds > 30 -> state="idle" (HIGHEST PRIORITY, regardless of cumulative activity rates)
+2. is_idle is true -> state="idle"
+3. app_switches_in_window > 5 OR unique_apps_in_window > 4 -> state="distracted"
+4. keyboard_rate_window > 10 AND active_app is work-related (editor/terminal/IDE) -> state="focused"
+5. keyboard_rate_window <= 5 AND mouse_rate_window <= 10 -> state="idle"
+6. Otherwise -> assess from overall context
 
-Classification rules:
-- "focused": Steady use of work-related apps (editor, terminal, IDE), minimal app switching, consistent keyboard/mouse activity
-- "distracted": Frequent app switching (>5 switches/min), visiting non-work apps (social media, news, messaging), fragmented attention
-- "idle": No keyboard/mouse activity for >30 seconds, high idle time
+CRITICAL: idle_seconds shows CURRENT inactivity. *_per_min fields may be cumulative session averages. ALWAYS prioritize idle_seconds for detecting current state.
 
-Key indicators:
-- keyboard_events_per_min: High = active typing
-- mouse_events_per_min: High = active navigation
-- app_switches_in_window: High = context switching (distraction signal)
-- unique_apps_in_window: High = fragmented attention
-- idle_seconds: High = user is away or passive
-- active_app: Work apps (editors, terminals, IDEs) vs non-work apps (browsers on social media, messaging)"""
+Output ONLY: {"state":"focused"|"distracted"|"idle","confidence":0.0-1.0,"reasoning":"brief"}
+
+EXAMPLES:
+Input: {"active_app":"Code","idle_seconds":52.2,"keyboard_events_per_min":129.1,"mouse_events_per_min":339.1,"app_switches_in_window":0}
+Output: {"state":"idle","confidence":0.95,"reasoning":"idle_seconds=52.2 exceeds 30s threshold, user currently inactive"}
+
+Input: {"active_app":"Code","idle_seconds":0.5,"keyboard_events_per_min":85.0,"mouse_events_per_min":200.0,"app_switches_in_window":1}
+Output: {"state":"focused","confidence":0.9,"reasoning":"Active in Code editor, low idle time, minimal app switching"}
+
+Input: {"active_app":"Safari","idle_seconds":2.0,"keyboard_events_per_min":40.0,"app_switches_in_window":8,"unique_apps_in_window":5}
+Output: {"state":"distracted","confidence":0.85,"reasoning":"8 app switches with 5 unique apps indicates fragmented attention"}"""
 
 PC_USAGE_USER_PROMPT_TEMPLATE = """Analyze the following PC usage data and classify the user's current work state.
 
