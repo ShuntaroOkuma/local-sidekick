@@ -64,8 +64,8 @@ TEXT_MLX_MODELS = (
 VISION_GGUF_MODELS = (
     GGUFModel(
         name="qwen2-vl-2b-instruct-q4km",
-        repo_id="Qwen/Qwen2-VL-2B-Instruct-GGUF",
-        filename="qwen2-vl-2b-instruct-q4_k_m.gguf",
+        repo_id="gaianet/Qwen2-VL-2B-Instruct-GGUF",
+        filename="Qwen2-VL-2B-Instruct-Q4_K_M.gguf",
         description="Qwen2-VL-2B-Instruct GGUF Q4_K_M (vision, llama.cpp)",
         size_gb=1.5,
     ),
@@ -114,7 +114,6 @@ def download_gguf_model(model: GGUFModel) -> Path:
         repo_id=model.repo_id,
         filename=model.filename,
         local_dir=str(MODELS_DIR),
-        local_dir_use_symlinks=False,
     )
     print(f"  [done] Saved to {downloaded_path}")
     return Path(downloaded_path)
@@ -226,24 +225,46 @@ def download_all(text_only: bool = False) -> None:
     """
     print("\n=== Downloading Models ===\n")
 
+    errors: list[str] = []
+
     print("Text models (GGUF):")
     for model in TEXT_GGUF_MODELS:
-        download_gguf_model(model)
+        try:
+            download_gguf_model(model)
+        except Exception as e:
+            print(f"  [ERROR] {model.name}: {e}")
+            errors.append(model.name)
 
     print("\nText models (MLX):")
     for model in TEXT_MLX_MODELS:
-        download_mlx_model(model)
+        try:
+            download_mlx_model(model)
+        except Exception as e:
+            print(f"  [ERROR] {model.name}: {e}")
+            errors.append(model.name)
 
     if not text_only:
         print("\nVision models (GGUF):")
         for model in VISION_GGUF_MODELS:
-            download_gguf_model(model)
+            try:
+                download_gguf_model(model)
+            except Exception as e:
+                print(f"  [ERROR] {model.name}: {e}")
+                errors.append(model.name)
 
         print("\nVision models (MLX):")
         for model in VISION_MLX_MODELS:
-            download_mlx_model(model)
+            try:
+                download_mlx_model(model)
+            except Exception as e:
+                print(f"  [ERROR] {model.name}: {e}")
+                errors.append(model.name)
 
-    print("\nDone! Run 'python download_models.py --check' to verify.")
+    if errors:
+        print(f"\nCompleted with {len(errors)} error(s): {', '.join(errors)}")
+        print("Run 'python download_models.py --check' to see status.")
+    else:
+        print("\nDone! Run 'python download_models.py --check' to verify.")
 
 
 def main() -> None:
