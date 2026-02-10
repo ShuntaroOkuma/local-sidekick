@@ -1,0 +1,37 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "local-sidekick-engine"
+version = "0.1.0"
+description = "Local Sidekick Engine - On-device focus/drowsiness/distraction monitoring"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn>=0.34",
+    "aiosqlite>=0.20",
+    "websockets>=14.0",
+    "opencv-python>=4.9",
+    "mediapipe>=0.10.14",
+    "numpy>=1.26",
+    "psutil>=5.9",
+    "Pillow>=10.0",
+    "pynput>=1.7.6",
+    "pyobjc-framework-Cocoa>=10.0",
+    "pyobjc-framework-Quartz>=10.0",
+]
+
+[project.optional-dependencies]
+llama = [
+    "llama-cpp-python>=0.3.0",
+]
+download = [
+    "huggingface-hub>=0.25",
+]
+all = [
+    "local-sidekick-engine[llama,download]",
+]
+
+[tool.setuptools.packages.find]
+include = ["engine*"]
