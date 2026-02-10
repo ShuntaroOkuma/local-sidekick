@@ -24,6 +24,7 @@ from typing import Sequence
 from experiment3_pcusage.monitor import PCUsageMonitor, UsageSnapshot
 from shared.metrics import MetricsCollector
 from shared.prompts import PC_USAGE_SYSTEM_PROMPT, format_pc_usage_prompt
+from shared.rule_classifier import classify_pc_usage
 
 
 def build_analysis_prompt(snapshot: UsageSnapshot) -> str:
@@ -310,9 +311,7 @@ def run_analysis(
 
             # Take snapshot
             snapshot = monitor.take_snapshot()
-
-            # Build prompt and analyze
-            user_prompt = build_analysis_prompt(snapshot)
+            snapshot_dict = snapshot.to_dict()
             analysis_count += 1
 
             print(f"[{elapsed:.0f}s] Analysis #{analysis_count}")
@@ -321,35 +320,57 @@ def run_analysis(
             print(f"  KB/min: {snapshot.keyboard_events_per_min}, Mouse/min: {snapshot.mouse_events_per_min}")
             print(f"  App switches: {snapshot.app_switches_in_window}, Unique apps: {snapshot.unique_apps_in_window}")
 
-            try:
-                with metrics.measure_llm():
-                    result = analyze_fn(
-                        system_prompt=PC_USAGE_SYSTEM_PROMPT,
-                        user_prompt=user_prompt,
-                    )
-                print(f"  -> State: {result.state} (confidence: {result.confidence:.2f})")
-                print(f"     Reasoning: {result.reasoning}")
-                print(f"     Latency: {result.latency_ms:.0f}ms")
+            # Try rule-based classification first
+            rule_result = classify_pc_usage(snapshot_dict)
+            if rule_result is not None:
+                print(f"  -> State: {rule_result.state} (confidence: {rule_result.confidence:.2f})")
+                print(f"     Reasoning: [rule] {rule_result.reasoning}")
+                print(f"     Latency: 0ms (rule-based)")
 
                 results.append({
                     "analysis_number": analysis_count,
                     "elapsed_seconds": round(elapsed, 1),
-                    "snapshot": snapshot.to_dict(),
-                    "state": result.state,
-                    "confidence": result.confidence,
-                    "reasoning": result.reasoning,
-                    "latency_ms": round(result.latency_ms, 1),
-                    "raw_response": result.raw_response,
+                    "snapshot": snapshot_dict,
+                    "state": rule_result.state,
+                    "confidence": rule_result.confidence,
+                    "reasoning": f"[rule] {rule_result.reasoning}",
+                    "latency_ms": 0.0,
+                    "raw_response": "",
+                    "source": "rule",
                 })
-            except Exception as e:
-                print(f"  [ERROR] LLM analysis failed: {e}")
-                results.append({
-                    "analysis_number": analysis_count,
-                    "elapsed_seconds": round(elapsed, 1),
-                    "snapshot": snapshot.to_dict(),
-                    "state": "error",
-                    "error": str(e),
-                })
+            else:
+                # Ambiguous case - use LLM
+                user_prompt = build_analysis_prompt(snapshot)
+                try:
+                    with metrics.measure_llm():
+                        result = analyze_fn(
+                            system_prompt=PC_USAGE_SYSTEM_PROMPT,
+                            user_prompt=user_prompt,
+                        )
+                    print(f"  -> State: {result.state} (confidence: {result.confidence:.2f})")
+                    print(f"     Reasoning: {result.reasoning}")
+                    print(f"     Latency: {result.latency_ms:.0f}ms")
+
+                    results.append({
+                        "analysis_number": analysis_count,
+                        "elapsed_seconds": round(elapsed, 1),
+                        "snapshot": snapshot_dict,
+                        "state": result.state,
+                        "confidence": result.confidence,
+                        "reasoning": result.reasoning,
+                        "latency_ms": round(result.latency_ms, 1),
+                        "raw_response": result.raw_response,
+                        "source": "llm",
+                    })
+                except Exception as e:
+                    print(f"  [ERROR] LLM analysis failed: {e}")
+                    results.append({
+                        "analysis_number": analysis_count,
+                        "elapsed_seconds": round(elapsed, 1),
+                        "snapshot": snapshot_dict,
+                        "state": "error",
+                        "error": str(e),
+                    })
 
             print()
 
