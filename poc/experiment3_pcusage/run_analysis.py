@@ -452,13 +452,21 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     # Save results to file
     if results:
-        output_dir = Path(__file__).parent.parent / "results"
-        output_dir.mkdir(exist_ok=True)
-        timestamp = time.strftime("%Y%m%d_%H%M%S")
-        output_file = output_dir / f"pcusage_{args.backend}_{timestamp}.json"
-        with open(output_file, "w") as f:
-            json.dump(results, f, indent=2)
-        print(f"Results saved to {output_file}")
+        from shared.results import ResultsCollector
+
+        collector = ResultsCollector(f"pcusage_{args.backend}")
+        for r in results:
+            collector.add(
+                elapsed_seconds=r.get("elapsed_seconds", 0.0),
+                state=r.get("state", "unknown"),
+                confidence=r.get("confidence", 0.0),
+                reasoning=r.get("reasoning", ""),
+                source=r.get("source", "llm"),
+                latency_ms=r.get("latency_ms", 0.0),
+                raw_response=r.get("raw_response", ""),
+                snapshot=r.get("snapshot"),
+            )
+        collector.save()
 
     return 0
 

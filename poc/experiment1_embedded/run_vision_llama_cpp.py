@@ -21,6 +21,7 @@ from shared.camera import CameraCapture
 from shared.metrics import MetricsCollector
 from shared.model_config import get_vision_model
 from shared.prompts import VISION_SYSTEM_PROMPT, VISION_USER_PROMPT
+from shared.results import ResultsCollector
 from shared.rule_classifier import classify_camera_vision
 
 DEFAULT_MODEL_PATH: Final[str] = str(
@@ -178,6 +179,7 @@ def main() -> None:
 
     model = load_model(str(model_path), args.clip_model_path, args.n_ctx)
     metrics = MetricsCollector()
+    results_collector = ResultsCollector("vision_llama_cpp")
 
     should_run = [True]
     signal.signal(signal.SIGINT, create_shutdown_handler(should_run))
@@ -203,6 +205,8 @@ def main() -> None:
             if now - last_llm_call >= args.interval:
                 last_llm_call = now
 
+                llm_start = time.monotonic()
+
                 # Rule-based pre-check: skip VLM if no face detected
                 rule_result = classify_camera_vision(frame_result.face_detected)
                 if rule_result is not None:
@@ -211,6 +215,9 @@ def main() -> None:
                         "confidence": rule_result.confidence,
                         "reasoning": f"[rule] {rule_result.reasoning}",
                     }
+                    source = "rule"
+                    latency_ms = 0.0
+                    raw_response = ""
                 else:
                     base64_image = camera.get_frame_as_base64()
                     if base64_image is None:
@@ -219,6 +226,19 @@ def main() -> None:
 
                     with metrics.measure_llm():
                         result = run_vision_inference(model, base64_image)
+                    source = "llm"
+                    latency_ms = (time.monotonic() - llm_start) * 1000
+                    raw_response = result.get("raw_response", "")
+
+                results_collector.add(
+                    elapsed_seconds=elapsed,
+                    state=result.get("state", "unknown"),
+                    confidence=result.get("confidence", 0.0),
+                    reasoning=result.get("reasoning", ""),
+                    source=source,
+                    latency_ms=latency_ms,
+                    raw_response=raw_response,
+                )
 
                 llm_summary = metrics.get_summary()
                 remaining = args.duration - elapsed
@@ -231,6 +251,8 @@ def main() -> None:
                 )
 
             time.sleep(0.01)
+
+    results_collector.save()
 
     summary = metrics.get_summary()
     print("\n" + "=" * 60)

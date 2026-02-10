@@ -20,6 +20,7 @@ from shared.camera import CameraCapture
 from shared.metrics import MetricsCollector
 from shared.model_config import get_vision_model
 from shared.prompts import VISION_SYSTEM_PROMPT, VISION_USER_PROMPT
+from shared.results import ResultsCollector
 from shared.rule_classifier import classify_camera_vision
 
 DEFAULT_MODEL_NAME: Final[str] = "mlx-community/Qwen2-VL-2B-Instruct-4bit"
@@ -137,6 +138,7 @@ def main() -> None:
     resolved_name = _resolve_model_name(args)
     model, processor = load_model(resolved_name)
     metrics = MetricsCollector()
+    results_collector = ResultsCollector("vision_mlx")
 
     should_run = [True]
     signal.signal(signal.SIGINT, create_shutdown_handler(should_run))
@@ -162,6 +164,8 @@ def main() -> None:
             if now - last_llm_call >= args.interval:
                 last_llm_call = now
 
+                llm_start = time.monotonic()
+
                 # Rule-based pre-check: skip VLM if no face detected
                 rule_result = classify_camera_vision(frame_result.face_detected)
                 if rule_result is not None:
@@ -170,6 +174,9 @@ def main() -> None:
                         "confidence": rule_result.confidence,
                         "reasoning": f"[rule] {rule_result.reasoning}",
                     }
+                    source = "rule"
+                    latency_ms = 0.0
+                    raw_response = ""
                 else:
                     if frame_result.frame is None:
                         print(f"[{elapsed:5.1f}s] No frame available, skipping...")
@@ -181,6 +188,19 @@ def main() -> None:
                         result = run_vision_inference(
                             model, processor, pil_image, args.max_tokens
                         )
+                    source = "llm"
+                    latency_ms = (time.monotonic() - llm_start) * 1000
+                    raw_response = result.get("raw_response", "")
+
+                results_collector.add(
+                    elapsed_seconds=elapsed,
+                    state=result.get("state", "unknown"),
+                    confidence=result.get("confidence", 0.0),
+                    reasoning=result.get("reasoning", ""),
+                    source=source,
+                    latency_ms=latency_ms,
+                    raw_response=raw_response,
+                )
 
                 llm_summary = metrics.get_summary()
                 remaining = args.duration - elapsed
@@ -193,6 +213,8 @@ def main() -> None:
                 )
 
             time.sleep(0.01)
+
+    results_collector.save()
 
     summary = metrics.get_summary()
     print("\n" + "=" * 60)
