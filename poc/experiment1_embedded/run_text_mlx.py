@@ -18,12 +18,25 @@ from mlx_lm.sample_utils import make_sampler
 from shared.camera import CameraCapture
 from shared.features import FeatureTracker, extract_frame_features
 from shared.metrics import MetricsCollector
+from shared.model_config import get_text_model
 from shared.prompts import TEXT_SYSTEM_PROMPT, format_text_prompt
 from shared.rule_classifier import classify_camera_text
 
 DEFAULT_MODEL_NAME: Final[str] = "mlx-community/Qwen2.5-3B-Instruct-4bit"
 DEFAULT_DURATION: Final[int] = 60
 DEFAULT_INTERVAL: Final[int] = 5
+
+
+def _resolve_model_name(args: argparse.Namespace) -> str:
+    """Resolve the model name from explicit --model-name or --model-tier.
+
+    Falls back to lightweight tier with a warning when the recommended
+    model cannot be resolved.
+    """
+    if args.model_name != DEFAULT_MODEL_NAME:
+        return args.model_name
+
+    return get_text_model("mlx", tier=args.model_tier)
 
 
 def parse_args() -> argparse.Namespace:
@@ -35,6 +48,13 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=DEFAULT_MODEL_NAME,
         help=f"MLX model name or path (default: {DEFAULT_MODEL_NAME})",
+    )
+    parser.add_argument(
+        "--model-tier",
+        type=str,
+        choices=["recommended", "lightweight"],
+        default="lightweight",
+        help="Model tier: recommended (7B) or lightweight (3B, default)",
     )
     parser.add_argument(
         "--duration",
@@ -110,7 +130,8 @@ def create_shutdown_handler(should_run: list[bool]):
 def main() -> None:
     args = parse_args()
 
-    model, tokenizer = load_model(args.model_name)
+    resolved_name = _resolve_model_name(args)
+    model, tokenizer = load_model(resolved_name)
     tracker = FeatureTracker()
     metrics = MetricsCollector()
 
