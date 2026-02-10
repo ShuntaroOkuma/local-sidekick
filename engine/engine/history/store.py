@@ -58,12 +58,18 @@ CREATE INDEX IF NOT EXISTS idx_daily_summary_date ON daily_summary(date);
 """
 
 
+_FLUSH_INTERVAL = 30.0  # Commit at most every 30 seconds
+_FLUSH_BATCH_SIZE = 10  # Or after 10 pending writes
+
+
 class HistoryStore:
     """Async SQLite store for state history and notifications."""
 
     def __init__(self, db_path: Optional[str] = None) -> None:
         self._db_path = Path(db_path) if db_path else DB_PATH
         self._db: Optional[aiosqlite.Connection] = None
+        self._pending_writes = 0
+        self._last_flush = 0.0
 
     async def open(self) -> None:
         """Open the database and create tables if needed."""
@@ -74,11 +80,22 @@ class HistoryStore:
         logger.info("History store opened at %s", self._db_path)
 
     async def close(self) -> None:
-        """Close the database connection."""
+        """Close the database connection, flushing pending writes."""
         if self._db is not None:
+            await self._maybe_flush(force=True)
             await self._db.close()
             self._db = None
             logger.info("History store closed.")
+
+    async def _maybe_flush(self, force: bool = False) -> None:
+        """Commit pending writes if batch size or time threshold is reached."""
+        if self._db is None or self._pending_writes == 0:
+            return
+        now = time.monotonic()
+        if force or self._pending_writes >= _FLUSH_BATCH_SIZE or (now - self._last_flush) >= _FLUSH_INTERVAL:
+            await self._db.commit()
+            self._pending_writes = 0
+            self._last_flush = now
 
     async def log_state(
         self,
@@ -97,7 +114,8 @@ class HistoryStore:
             "integrated_state, confidence, source) VALUES (?, ?, ?, ?, ?, ?)",
             (timestamp, camera_state, pc_state, integrated_state, confidence, source),
         )
-        await self._db.commit()
+        self._pending_writes += 1
+        await self._maybe_flush()
 
     async def log_notification(
         self,
