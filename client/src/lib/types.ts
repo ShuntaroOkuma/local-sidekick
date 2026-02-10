@@ -53,11 +53,11 @@ export interface Settings {
 
 export interface ElectronAPI {
   getEngineUrl: () => Promise<string>;
-  onNotification: (callback: (data: { type: string; message: string }) => void) => void;
+  onNotification: (callback: (data: { type: string; message: string }) => void) => () => void;
   sendNotificationResponse: (type: string, action: string) => void;
   getAppVersion: () => Promise<string>;
   getPlatform: () => Promise<string>;
-  onNavigate: (callback: (path: string) => void) => void;
+  onNavigate: (callback: (path: string) => void) => () => void;
 }
 
 declare global {
