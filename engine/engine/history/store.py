@@ -215,7 +215,11 @@ class HistoryStore:
         ]
 
     async def save_daily_summary(self, summary: dict) -> None:
-        """Upsert a daily summary record."""
+        """Upsert a daily summary record.
+
+        Accepts unprefixed keys (focused_minutes, etc.) as produced by
+        compute_daily_stats(). Maps them to the total_* DB columns.
+        """
         if self._db is None:
             return
         await self._db.execute(
@@ -235,11 +239,11 @@ class HistoryStore:
             "report_text = excluded.report_text",
             (
                 summary["date"],
-                summary.get("total_focused_minutes", 0.0),
-                summary.get("total_drowsy_minutes", 0.0),
-                summary.get("total_distracted_minutes", 0.0),
-                summary.get("total_away_minutes", 0.0),
-                summary.get("total_idle_minutes", 0.0),
+                summary.get("focused_minutes", summary.get("total_focused_minutes", 0.0)),
+                summary.get("drowsy_minutes", summary.get("total_drowsy_minutes", 0.0)),
+                summary.get("distracted_minutes", summary.get("total_distracted_minutes", 0.0)),
+                summary.get("away_minutes", summary.get("total_away_minutes", 0.0)),
+                summary.get("idle_minutes", summary.get("total_idle_minutes", 0.0)),
                 summary.get("notification_count", 0),
                 summary.get("notification_accepted", 0),
                 summary.get("report_text"),
