@@ -19,6 +19,7 @@ from shared.camera import CameraCapture
 from shared.features import FeatureTracker, extract_frame_features
 from shared.metrics import MetricsCollector
 from shared.prompts import TEXT_SYSTEM_PROMPT, format_text_prompt
+from shared.rule_classifier import classify_camera_text
 
 DEFAULT_BASE_URL: Final[str] = "http://localhost:1234/v1"
 DEFAULT_API_KEY: Final[str] = "lm-studio"
@@ -139,18 +140,28 @@ def main() -> None:
             now = time.monotonic()
             if now - last_llm_call >= args.interval:
                 last_llm_call = now
-                features_json = snapshot.to_json()
-                user_prompt = format_text_prompt(features_json)
 
-                try:
-                    with metrics.measure_llm():
-                        result = run_inference(client, user_prompt)
-                except openai.APIConnectionError:
-                    print(f"[{elapsed:5.1f}s] LM Studio connection lost, retrying...")
-                    continue
-                except openai.APIError as e:
-                    print(f"[{elapsed:5.1f}s] API error: {e}")
-                    continue
+                # Try rule-based classification first
+                rule_result = classify_camera_text(snapshot.to_dict())
+                if rule_result is not None:
+                    result = {
+                        "state": rule_result.state,
+                        "confidence": rule_result.confidence,
+                        "reasoning": f"[rule] {rule_result.reasoning}",
+                    }
+                else:
+                    features_json = snapshot.to_json()
+                    user_prompt = format_text_prompt(features_json)
+
+                    try:
+                        with metrics.measure_llm():
+                            result = run_inference(client, user_prompt)
+                    except openai.APIConnectionError:
+                        print(f"[{elapsed:5.1f}s] LM Studio connection lost, retrying...")
+                        continue
+                    except openai.APIError as e:
+                        print(f"[{elapsed:5.1f}s] API error: {e}")
+                        continue
 
                 llm_summary = metrics.get_summary()
                 remaining = args.duration - elapsed

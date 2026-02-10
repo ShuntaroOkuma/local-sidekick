@@ -20,6 +20,7 @@ from llama_cpp.llama_chat_format import Llava15ChatHandler
 from shared.camera import CameraCapture
 from shared.metrics import MetricsCollector
 from shared.prompts import VISION_SYSTEM_PROMPT, VISION_USER_PROMPT
+from shared.rule_classifier import classify_camera_vision
 
 DEFAULT_MODEL_PATH: Final[str] = str(
     Path(__file__).parent.parent / "models" / "Qwen2-VL-2B-Instruct-Q4_K_M.gguf"
@@ -167,13 +168,22 @@ def main() -> None:
             if now - last_llm_call >= args.interval:
                 last_llm_call = now
 
-                base64_image = camera.get_frame_as_base64()
-                if base64_image is None:
-                    print(f"[{elapsed:5.1f}s] No frame available, skipping...")
-                    continue
+                # Rule-based pre-check: skip VLM if no face detected
+                rule_result = classify_camera_vision(frame_result.face_detected)
+                if rule_result is not None:
+                    result = {
+                        "state": rule_result.state,
+                        "confidence": rule_result.confidence,
+                        "reasoning": f"[rule] {rule_result.reasoning}",
+                    }
+                else:
+                    base64_image = camera.get_frame_as_base64()
+                    if base64_image is None:
+                        print(f"[{elapsed:5.1f}s] No frame available, skipping...")
+                        continue
 
-                with metrics.measure_llm():
-                    result = run_vision_inference(model, base64_image)
+                    with metrics.measure_llm():
+                        result = run_vision_inference(model, base64_image)
 
                 llm_summary = metrics.get_summary()
                 remaining = args.duration - elapsed

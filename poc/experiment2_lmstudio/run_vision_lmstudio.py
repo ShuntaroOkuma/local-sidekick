@@ -18,6 +18,7 @@ import openai
 from shared.camera import CameraCapture
 from shared.metrics import MetricsCollector
 from shared.prompts import VISION_SYSTEM_PROMPT, VISION_USER_PROMPT
+from shared.rule_classifier import classify_camera_vision
 
 DEFAULT_BASE_URL: Final[str] = "http://localhost:1234/v1"
 DEFAULT_API_KEY: Final[str] = "lm-studio"
@@ -147,20 +148,29 @@ def main() -> None:
             if now - last_llm_call >= args.interval:
                 last_llm_call = now
 
-                base64_image = camera.get_frame_as_base64()
-                if base64_image is None:
-                    print(f"[{elapsed:5.1f}s] No frame available, skipping...")
-                    continue
+                # Rule-based pre-check: skip VLM if no face detected
+                rule_result = classify_camera_vision(frame_result.face_detected)
+                if rule_result is not None:
+                    result = {
+                        "state": rule_result.state,
+                        "confidence": rule_result.confidence,
+                        "reasoning": f"[rule] {rule_result.reasoning}",
+                    }
+                else:
+                    base64_image = camera.get_frame_as_base64()
+                    if base64_image is None:
+                        print(f"[{elapsed:5.1f}s] No frame available, skipping...")
+                        continue
 
-                try:
-                    with metrics.measure_llm():
-                        result = run_vision_inference(client, base64_image)
-                except openai.APIConnectionError:
-                    print(f"[{elapsed:5.1f}s] LM Studio connection lost, retrying...")
-                    continue
-                except openai.APIError as e:
-                    print(f"[{elapsed:5.1f}s] API error: {e}")
-                    continue
+                    try:
+                        with metrics.measure_llm():
+                            result = run_vision_inference(client, base64_image)
+                    except openai.APIConnectionError:
+                        print(f"[{elapsed:5.1f}s] LM Studio connection lost, retrying...")
+                        continue
+                    except openai.APIError as e:
+                        print(f"[{elapsed:5.1f}s] API error: {e}")
+                        continue
 
                 llm_summary = metrics.get_summary()
                 remaining = args.duration - elapsed
