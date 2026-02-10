@@ -18,6 +18,9 @@
 | Code review: Experiments | Done | reviewer |
 | README.md / PROGRESS.md | Done | reviewer |
 | Fix blockers (model paths, merge) | Done | team-lead |
+| Fix pyproject.toml build-backend | Done | team-lead |
+| Fix vision GGUF repo (401 error) | Done | team-lead |
+| Migrate camera.py to FaceLandmarker Tasks API | Done | team-lead |
 
 ## Completed
 
@@ -27,7 +30,7 @@
 - All `__init__.py` files
 
 ### Shared Modules (foundation-dev)
-- **camera.py**: `CameraCapture` with cv2 + MediaPipe FaceMesh (478 landmarks), `FrameResult` dataclass, base64 encoding
+- **camera.py**: `CameraCapture` with cv2 + MediaPipe FaceLandmarker Tasks API (478 landmarks), `FrameResult` dataclass, base64 encoding
 - **features.py**: EAR, MAR, head pose (solvePnP), `FeatureTracker` with PERCLOS + blink detection
 - **metrics.py**: `MetricsCollector` with frame/LLM timing, CPU/memory, P95 stats
 - **prompts.py**: Three prompt templates (text, vision, PC usage) with JSON response format
@@ -63,6 +66,10 @@
 - Model path mismatch between download_models.py and experiment scripts -> Fixed
 - Experiment 2 duplicate implementations on two branches -> Resolved (kept exp1-dev's)
 - exp3 model subdirectory names didn't match download output -> Fixed
+- pyproject.toml had invalid build-backend `setuptools.backends._legacy:_Backend` -> Fixed to `setuptools.build_meta`
+- Vision GGUF 401 error: `Qwen/Qwen2-VL-2B-Instruct-GGUF` doesn't exist -> Changed to `gaianet/Qwen2-VL-2B-Instruct-GGUF`
+- MediaPipe 0.10.32 removed `mp.solutions` API -> Rewrote camera.py to use `FaceLandmarker` Tasks API
+- FaceLandmarker requires `.task` model file -> Added to download_models.py (auto-downloaded from Google Storage)
 
 ### Remaining (non-blocking for PoC)
 - Vision llama.cpp chat_handler: Falls back to None if CLIP model not found (warns but continues)
@@ -80,7 +87,13 @@ cd poc/
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -e ".[all]"
-python download_models.py
+python download_models.py          # Downloads all models (LLM + MediaPipe FaceLandmarker)
+python download_models.py --check  # Verify all models are ready
+```
+
+### Quick Camera Test
+```bash
+python -m shared.camera --show-video --duration 10
 ```
 
 ### Test Execution

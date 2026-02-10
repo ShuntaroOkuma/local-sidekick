@@ -1,0 +1,13 @@
+poc/.venv/
+.venv/
+*.egg-info/
+dist/
+build/
+__pycache__/
+*.pyc
+
+.env
+.env.*
+
+# Model files (large binaries, downloaded separately)
+poc/models/
