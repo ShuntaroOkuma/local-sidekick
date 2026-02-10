@@ -87,7 +87,7 @@ def run_vision_inference(
         image,
         VISION_USER_PROMPT,
         max_tokens=max_tokens,
-        temp=0.1,
+        temperature=0.1,
     )
 
     try:

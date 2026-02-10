@@ -167,6 +167,7 @@ def analyze_mlx(
 ) -> LLMResult:
     """Send analysis request to mlx-lm."""
     import mlx_lm
+    from mlx_lm.sample_utils import make_sampler
 
     if model_path is None:
         models_dir = Path(__file__).parent.parent / "models"
@@ -189,7 +190,7 @@ def analyze_mlx(
         tokenizer,
         prompt=prompt,
         max_tokens=200,
-        temp=0.1,
+        sampler=make_sampler(temp=0.1),
         verbose=False,
     )
     latency_ms = (time.perf_counter() - start) * 1000
