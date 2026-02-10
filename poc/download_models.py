@@ -1,6 +1,6 @@
 """Model download helper for Local Sidekick PoC.
 
-Downloads required GGUF and MLX models from Hugging Face Hub.
+Downloads required GGUF, MLX, and MediaPipe models.
 
 Usage:
     python download_models.py              # Download all models
@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -79,6 +80,13 @@ VISION_MLX_MODELS = (
         size_gb=1.5,
     ),
 )
+
+# MediaPipe FaceLandmarker model (required for camera.py)
+_FACE_LANDMARKER_URL = (
+    "https://storage.googleapis.com/mediapipe-models/"
+    "face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+)
+_FACE_LANDMARKER_FILENAME = "face_landmarker.task"
 
 
 def _ensure_models_dir() -> None:
@@ -151,6 +159,25 @@ def download_mlx_model(model: MLXModel) -> Path:
     return Path(downloaded_path)
 
 
+def download_face_landmarker() -> Path:
+    """Download MediaPipe FaceLandmarker model from Google Storage.
+
+    Returns:
+        Path to the downloaded .task file.
+    """
+    _ensure_models_dir()
+    target_path = MODELS_DIR / _FACE_LANDMARKER_FILENAME
+
+    if target_path.exists():
+        print(f"  [skip] face_landmarker: already exists at {target_path}")
+        return target_path
+
+    print(f"  [download] face_landmarker (~3.6MB): MediaPipe FaceLandmarker (float16)")
+    urllib.request.urlretrieve(_FACE_LANDMARKER_URL, str(target_path))
+    print(f"  [done] Saved to {target_path}")
+    return target_path
+
+
 def get_gguf_model_path(model_name: str) -> Optional[Path]:
     """Get the path to a downloaded GGUF model file.
 
@@ -191,6 +218,10 @@ def check_models() -> None:
 
     all_models: list[tuple[str, str, Path, float]] = []
 
+    # MediaPipe FaceLandmarker
+    fl_path = MODELS_DIR / _FACE_LANDMARKER_FILENAME
+    all_models.append(("face_landmarker", "MediaPipe FaceLandmarker float16 (camera)", fl_path, 0.004))
+
     for m in TEXT_GGUF_MODELS + VISION_GGUF_MODELS:
         path = MODELS_DIR / m.filename
         all_models.append((m.name, m.description, path, m.size_gb))
@@ -227,7 +258,14 @@ def download_all(text_only: bool = False) -> None:
 
     errors: list[str] = []
 
-    print("Text models (GGUF):")
+    print("MediaPipe models:")
+    try:
+        download_face_landmarker()
+    except Exception as e:
+        print(f"  [ERROR] face_landmarker: {e}")
+        errors.append("face_landmarker")
+
+    print("\nText models (GGUF):")
     for model in TEXT_GGUF_MODELS:
         try:
             download_gguf_model(model)
