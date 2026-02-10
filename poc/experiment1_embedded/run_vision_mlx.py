@@ -18,7 +18,7 @@ from PIL import Image
 
 from shared.camera import CameraCapture
 from shared.metrics import MetricsCollector
-from shared.prompts import VISION_USER_PROMPT
+from shared.prompts import VISION_SYSTEM_PROMPT, VISION_USER_PROMPT
 
 DEFAULT_MODEL_NAME: Final[str] = "mlx-community/Qwen2-VL-2B-Instruct-4bit"
 DEFAULT_DURATION: Final[int] = 120
@@ -81,10 +81,12 @@ def run_vision_inference(
     """Run vision inference with mlx-vlm and return parsed result."""
     from mlx_vlm import generate as vlm_generate
 
+    full_prompt = f"{VISION_SYSTEM_PROMPT}\n\n{VISION_USER_PROMPT}"
+
     result = vlm_generate(
         model,
         processor,
-        prompt=VISION_USER_PROMPT,
+        prompt=full_prompt,
         image=image,
         max_tokens=max_tokens,
         temperature=0.1,
