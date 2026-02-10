@@ -78,24 +78,66 @@ poc/
 
 ## Success Criteria
 
-| Metric | Text Mode | Vision Mode |
-|--------|-----------|-------------|
-| Camera FPS | >= 25 | >= 25 |
-| LLM Latency | < 2s (embedded), < 3s (LM Studio) | < 10s (embedded), < 15s (LM Studio) |
-| Memory | < 4GB | < 6GB |
-| CPU (sustained) | < 50% | < 70% |
-| Detection accuracy | >= 70% for obvious states | >= 70% |
+| Metric             | Text Mode                         | Vision Mode                         |
+| ------------------ | --------------------------------- | ----------------------------------- |
+| Camera FPS         | >= 25                             | >= 25                               |
+| LLM Latency        | < 2s (embedded), < 3s (LM Studio) | < 10s (embedded), < 15s (LM Studio) |
+| Memory             | < 4GB                             | < 6GB                               |
+| CPU (sustained)    | < 50%                             | < 70%                               |
+| Detection accuracy | >= 70% for obvious states         | >= 70%                              |
 
 ## macOS Permissions
 
-- **Input Monitoring** (System Settings > Privacy & Security > Input Monitoring): Required for Experiment 3 (pynput)
-- Camera access: Required for Experiments 1 and 2
+### Camera (Experiment 1, 2)
+カメラへのアクセス許可が必要です。初回実行時にmacOSのダイアログが表示されます。
+
+### Input Monitoring / Accessibility (Experiment 3)
+
+実験3（PC利用状況モニタリング）では、キーボード/マウスイベントの取得とアイドル時間の検出のために、**実行元のターミナルアプリ**にmacOS権限を付与する必要があります。
+
+#### VSCode Terminal（推奨）
+
+VSCodeターミナルでは、VSCode自体に権限があれば子プロセスも動作します。
+
+1. **システム設定 > プライバシーとセキュリティ > 入力監視** に「Visual Studio Code」を追加・有効化
+2. **システム設定 > プライバシーとセキュリティ > アクセシビリティ** に「Visual Studio Code」を追加・有効化
+
+> 実行時に `This process is not trusted!` という警告が表示されますが、VSCodeに権限が付与されていればイベント取得は正常に動作します。この警告は無視して問題ありません。
+
+#### iTerm2
+
+iTerm2では以下の **3つの権限すべて** が必要です：
+
+1. **システム設定 > プライバシーとセキュリティ > 入力監視** に「iTerm」を追加・有効化
+2. **システム設定 > プライバシーとセキュリティ > アクセシビリティ** に「iTerm」を追加・有効化
+3. **システム設定 > プライバシーとセキュリティ > オートメーション** でiTermの権限を確認
+
+権限変更後は **ターミナルアプリを再起動** してください（既存プロセスには反映されません）。
+
+#### Terminal.app
+
+1. **システム設定 > プライバシーとセキュリティ > 入力監視** に「ターミナル」を追加・有効化
+2. **システム設定 > プライバシーとセキュリティ > アクセシビリティ** に「ターミナル」を追加・有効化
+
+#### 権限の確認方法
+
+```bash
+python -m experiment3_pcusage.monitor --duration 10
+```
+
+正常な場合：
+```
+Checking permissions...
+[OK] All permissions granted.
+```
+
+権限不足の場合は `[WARNING] Some permissions are missing` と表示され、必要な権限が案内されます。
 
 ## Models
 
-| Model | Format | Size | Purpose |
-|-------|--------|------|---------|
-| Qwen2.5-3B-Instruct | GGUF Q4_K_M | ~2.0GB | Text LLM (llama.cpp) |
-| Qwen2.5-3B-Instruct-4bit | MLX | ~1.8GB | Text LLM (MLX) |
-| Qwen2-VL-2B-Instruct | GGUF Q4_K_M | ~1.5GB | Vision LLM (llama.cpp) |
-| Qwen2-VL-2B-Instruct-4bit | MLX | ~1.5GB | Vision LLM (MLX) |
+| Model                     | Format      | Size   | Purpose                |
+| ------------------------- | ----------- | ------ | ---------------------- |
+| Qwen2.5-3B-Instruct       | GGUF Q4_K_M | ~2.0GB | Text LLM (llama.cpp)   |
+| Qwen2.5-3B-Instruct-4bit  | MLX         | ~1.8GB | Text LLM (MLX)         |
+| Qwen2-VL-2B-Instruct      | GGUF Q4_K_M | ~1.5GB | Vision LLM (llama.cpp) |
+| Qwen2-VL-2B-Instruct-4bit | MLX         | ~1.5GB | Vision LLM (MLX)       |
