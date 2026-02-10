@@ -1,1 +1,1 @@
-# Experiment 2: LM Studio API
+"""Experiment 2: LM Studio API inference."""

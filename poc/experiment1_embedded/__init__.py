@@ -1,1 +1,1 @@
-# Experiment 1: Embedded LLM (llama.cpp + MLX)
+"""Experiment 1: Embedded LLM inference (llama.cpp + MLX)."""
