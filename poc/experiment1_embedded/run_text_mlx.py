@@ -9,16 +9,15 @@ from __future__ import annotations
 import argparse
 import json
 import signal
-import sys
 import time
 from typing import Final
 
 import mlx_lm
 
 from shared.camera import CameraCapture
-from shared.features import FeatureTracker
+from shared.features import FeatureTracker, extract_frame_features
 from shared.metrics import MetricsCollector
-from shared.prompts import build_text_prompt
+from shared.prompts import TEXT_SYSTEM_PROMPT, format_text_prompt
 
 DEFAULT_MODEL_NAME: Final[str] = "mlx-community/Qwen2.5-3B-Instruct-4bit"
 DEFAULT_DURATION: Final[int] = 60
@@ -64,11 +63,11 @@ def load_model(model_name: str) -> tuple:
     return model, tokenizer
 
 
-def run_inference(model, tokenizer, prompt: str, max_tokens: int) -> dict:
+def run_inference(model, tokenizer, user_prompt: str, max_tokens: int) -> dict:
     """Run text inference with mlx-lm and return parsed result."""
     messages = [
-        {"role": "system", "content": "You are a state classification assistant. Always respond in JSON."},
-        {"role": "user", "content": prompt},
+        {"role": "system", "content": TEXT_SYSTEM_PROMPT},
+        {"role": "user", "content": user_prompt},
     ]
 
     if hasattr(tokenizer, "apply_chat_template"):
@@ -78,7 +77,11 @@ def run_inference(model, tokenizer, prompt: str, max_tokens: int) -> dict:
             add_generation_prompt=True,
         )
     else:
-        formatted_prompt = f"<|im_start|>system\nYou are a state classification assistant. Always respond in JSON.<|im_end|>\n<|im_start|>user\n{prompt}<|im_end|>\n<|im_start|>assistant\n"
+        formatted_prompt = (
+            f"<|im_start|>system\n{TEXT_SYSTEM_PROMPT}<|im_end|>\n"
+            f"<|im_start|>user\n{user_prompt}<|im_end|>\n"
+            f"<|im_start|>assistant\n"
+        )
 
     response = mlx_lm.generate(
         model,
@@ -106,9 +109,8 @@ def main() -> None:
     args = parse_args()
 
     model, tokenizer = load_model(args.model_name)
-    camera = CameraCapture()
     tracker = FeatureTracker()
-    metrics = MetricsCollector(experiment_name="exp1_text_mlx")
+    metrics = MetricsCollector()
 
     should_run = [True]
     signal.signal(signal.SIGINT, create_shutdown_handler(should_run))
@@ -116,55 +118,52 @@ def main() -> None:
     print(f"\nRunning for {args.duration}s with {args.interval}s LLM interval...")
     print("-" * 60)
 
-    start_time = time.time()
+    start_time = time.monotonic()
     last_llm_call = 0.0
 
-    try:
-        camera.start()
+    with CameraCapture() as camera:
+        metrics.start()
 
         while should_run[0]:
-            elapsed = time.time() - start_time
+            elapsed = time.monotonic() - start_time
             if elapsed >= args.duration:
                 break
 
-            frame_start = time.time()
-            frame, landmarks = camera.read_frame()
-            frame_time = time.time() - frame_start
-            metrics.record_frame(frame_time)
+            with metrics.measure_frame():
+                frame_result = camera.read_frame()
 
-            if landmarks is not None:
-                features = tracker.update(landmarks)
-            else:
-                features = tracker.get_no_face_features()
+            frame_features = extract_frame_features(
+                frame_result.landmarks,
+                frame_result.timestamp,
+            )
+            snapshot = tracker.update(frame_features)
 
-            now = time.time()
+            now = time.monotonic()
             if now - last_llm_call >= args.interval:
                 last_llm_call = now
-                prompt = build_text_prompt(features)
+                features_json = snapshot.to_json()
+                user_prompt = format_text_prompt(features_json)
 
-                llm_start = time.time()
-                result = run_inference(model, tokenizer, prompt, args.max_tokens)
-                llm_time = time.time() - llm_start
-                metrics.record_llm_call(llm_time)
+                with metrics.measure_llm():
+                    result = run_inference(model, tokenizer, user_prompt, args.max_tokens)
 
+                llm_summary = metrics.get_summary()
                 remaining = args.duration - elapsed
                 print(
                     f"[{elapsed:5.1f}s / {args.duration}s] "
                     f"State: {result.get('state', 'unknown'):12s} | "
-                    f"LLM: {llm_time:.2f}s | "
-                    f"FPS: {metrics.current_fps:.1f} | "
+                    f"LLM: {llm_summary.avg_llm_latency_ms:.0f}ms | "
+                    f"FPS: {llm_summary.fps:.1f} | "
                     f"Remaining: {remaining:.0f}s"
                 )
 
             time.sleep(0.01)
 
-    finally:
-        camera.stop()
-        summary = metrics.get_summary()
-        print("\n" + "=" * 60)
-        print("RESULTS: Experiment 1 - Text Mode (mlx-lm)")
-        print("=" * 60)
-        print(json.dumps(summary, indent=2))
+    summary = metrics.get_summary()
+    print("\n" + "=" * 60)
+    print("RESULTS: Experiment 1 - Text Mode (mlx-lm)")
+    print("=" * 60)
+    summary.print_report()
 
 
 if __name__ == "__main__":

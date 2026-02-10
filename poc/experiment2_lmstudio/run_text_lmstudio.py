@@ -16,9 +16,9 @@ from typing import Final
 import openai
 
 from shared.camera import CameraCapture
-from shared.features import FeatureTracker
+from shared.features import FeatureTracker, extract_frame_features
 from shared.metrics import MetricsCollector
-from shared.prompts import build_text_prompt
+from shared.prompts import TEXT_SYSTEM_PROMPT, format_text_prompt
 
 DEFAULT_BASE_URL: Final[str] = "http://localhost:1234/v1"
 DEFAULT_API_KEY: Final[str] = "lm-studio"
@@ -60,23 +60,23 @@ def check_lmstudio_connection(client: openai.OpenAI) -> bool:
             print("Error: LM Studio is running but no model is loaded.")
             print("Please load a model in LM Studio first.")
             return False
-        print(f"Connected to LM Studio. Available models:")
+        print("Connected to LM Studio. Available models:")
         for m in model_list:
             print(f"  - {m.id}")
         return True
     except openai.APIConnectionError:
-        print(f"Error: Cannot connect to LM Studio.")
+        print("Error: Cannot connect to LM Studio.")
         print("Please ensure LM Studio is running with the server enabled.")
         return False
 
 
-def run_inference(client: openai.OpenAI, prompt: str) -> dict:
+def run_inference(client: openai.OpenAI, user_prompt: str) -> dict:
     """Run text inference via LM Studio API and return parsed result."""
     response = client.chat.completions.create(
         model="default",
         messages=[
-            {"role": "system", "content": "You are a state classification assistant. Always respond in JSON."},
-            {"role": "user", "content": prompt},
+            {"role": "system", "content": TEXT_SYSTEM_PROMPT},
+            {"role": "user", "content": user_prompt},
         ],
         max_tokens=256,
         temperature=0.1,
@@ -107,9 +107,8 @@ def main() -> None:
     if not check_lmstudio_connection(client):
         sys.exit(1)
 
-    camera = CameraCapture()
     tracker = FeatureTracker()
-    metrics = MetricsCollector(experiment_name="exp2_text_lmstudio")
+    metrics = MetricsCollector()
 
     should_run = [True]
     signal.signal(signal.SIGINT, create_shutdown_handler(should_run))
@@ -117,62 +116,59 @@ def main() -> None:
     print(f"\nRunning for {args.duration}s with {args.interval}s LLM interval...")
     print("-" * 60)
 
-    start_time = time.time()
+    start_time = time.monotonic()
     last_llm_call = 0.0
 
-    try:
-        camera.start()
+    with CameraCapture() as camera:
+        metrics.start()
 
         while should_run[0]:
-            elapsed = time.time() - start_time
+            elapsed = time.monotonic() - start_time
             if elapsed >= args.duration:
                 break
 
-            frame_start = time.time()
-            frame, landmarks = camera.read_frame()
-            frame_time = time.time() - frame_start
-            metrics.record_frame(frame_time)
+            with metrics.measure_frame():
+                frame_result = camera.read_frame()
 
-            if landmarks is not None:
-                features = tracker.update(landmarks)
-            else:
-                features = tracker.get_no_face_features()
+            frame_features = extract_frame_features(
+                frame_result.landmarks,
+                frame_result.timestamp,
+            )
+            snapshot = tracker.update(frame_features)
 
-            now = time.time()
+            now = time.monotonic()
             if now - last_llm_call >= args.interval:
                 last_llm_call = now
-                prompt = build_text_prompt(features)
+                features_json = snapshot.to_json()
+                user_prompt = format_text_prompt(features_json)
 
-                llm_start = time.time()
                 try:
-                    result = run_inference(client, prompt)
+                    with metrics.measure_llm():
+                        result = run_inference(client, user_prompt)
                 except openai.APIConnectionError:
                     print(f"[{elapsed:5.1f}s] LM Studio connection lost, retrying...")
                     continue
                 except openai.APIError as e:
                     print(f"[{elapsed:5.1f}s] API error: {e}")
                     continue
-                llm_time = time.time() - llm_start
-                metrics.record_llm_call(llm_time)
 
+                llm_summary = metrics.get_summary()
                 remaining = args.duration - elapsed
                 print(
                     f"[{elapsed:5.1f}s / {args.duration}s] "
                     f"State: {result.get('state', 'unknown'):12s} | "
-                    f"LLM: {llm_time:.2f}s | "
-                    f"FPS: {metrics.current_fps:.1f} | "
+                    f"LLM: {llm_summary.avg_llm_latency_ms:.0f}ms | "
+                    f"FPS: {llm_summary.fps:.1f} | "
                     f"Remaining: {remaining:.0f}s"
                 )
 
             time.sleep(0.01)
 
-    finally:
-        camera.stop()
-        summary = metrics.get_summary()
-        print("\n" + "=" * 60)
-        print("RESULTS: Experiment 2 - Text Mode (LM Studio)")
-        print("=" * 60)
-        print(json.dumps(summary, indent=2))
+    summary = metrics.get_summary()
+    print("\n" + "=" * 60)
+    print("RESULTS: Experiment 2 - Text Mode (LM Studio)")
+    print("=" * 60)
+    summary.print_report()
 
 
 if __name__ == "__main__":

@@ -15,10 +15,11 @@ from pathlib import Path
 from typing import Final
 
 from llama_cpp import Llama
+from llama_cpp.llama_chat_format import Llava15ChatHandler
 
 from shared.camera import CameraCapture
 from shared.metrics import MetricsCollector
-from shared.prompts import build_vision_prompt
+from shared.prompts import VISION_SYSTEM_PROMPT, VISION_USER_PROMPT
 
 DEFAULT_MODEL_PATH: Final[str] = str(
     Path.home() / ".cache" / "local-sidekick" / "models" / "qwen2-vl-2b-instruct-q4_k_m.gguf"
@@ -73,13 +74,16 @@ def load_model(model_path: str, clip_model_path: str, n_ctx: int) -> Llama:
     print(f"Loading CLIP model from {clip_model_path}...")
 
     clip_path = Path(clip_model_path)
-    if not clip_path.exists():
+    chat_handler = None
+    if clip_path.exists():
+        chat_handler = Llava15ChatHandler(clip_model_path=str(clip_path))
+    else:
         print(f"Warning: CLIP model not found at {clip_model_path}")
         print("Vision capabilities may be limited.")
 
     model = Llama(
         model_path=model_path,
-        chat_handler=None,
+        chat_handler=chat_handler,
         n_gpu_layers=-1,
         n_ctx=n_ctx,
         verbose=False,
@@ -88,7 +92,7 @@ def load_model(model_path: str, clip_model_path: str, n_ctx: int) -> Llama:
     return model
 
 
-def run_vision_inference(model: Llama, base64_image: str, prompt: str) -> dict:
+def run_vision_inference(model: Llama, base64_image: str) -> dict:
     """Run vision inference with base64-encoded image."""
     data_uri = f"data:image/jpeg;base64,{base64_image}"
 
@@ -96,12 +100,12 @@ def run_vision_inference(model: Llama, base64_image: str, prompt: str) -> dict:
         messages=[
             {
                 "role": "system",
-                "content": "You are a state classification assistant analyzing webcam images. Always respond in JSON.",
+                "content": VISION_SYSTEM_PROMPT,
             },
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": prompt},
+                    {"type": "text", "text": VISION_USER_PROMPT},
                     {
                         "type": "image_url",
                         "image_url": {"url": data_uri},
@@ -137,8 +141,7 @@ def main() -> None:
         sys.exit(1)
 
     model = load_model(str(model_path), args.clip_model_path, args.n_ctx)
-    camera = CameraCapture()
-    metrics = MetricsCollector(experiment_name="exp1_vision_llama_cpp")
+    metrics = MetricsCollector()
 
     should_run = [True]
     signal.signal(signal.SIGINT, create_shutdown_handler(should_run))
@@ -146,23 +149,21 @@ def main() -> None:
     print(f"\nRunning for {args.duration}s with {args.interval}s LLM interval...")
     print("-" * 60)
 
-    start_time = time.time()
+    start_time = time.monotonic()
     last_llm_call = 0.0
 
-    try:
-        camera.start()
+    with CameraCapture() as camera:
+        metrics.start()
 
         while should_run[0]:
-            elapsed = time.time() - start_time
+            elapsed = time.monotonic() - start_time
             if elapsed >= args.duration:
                 break
 
-            frame_start = time.time()
-            frame, _landmarks = camera.read_frame()
-            frame_time = time.time() - frame_start
-            metrics.record_frame(frame_time)
+            with metrics.measure_frame():
+                frame_result = camera.read_frame()
 
-            now = time.time()
+            now = time.monotonic()
             if now - last_llm_call >= args.interval:
                 last_llm_call = now
 
@@ -171,31 +172,26 @@ def main() -> None:
                     print(f"[{elapsed:5.1f}s] No frame available, skipping...")
                     continue
 
-                prompt = build_vision_prompt()
+                with metrics.measure_llm():
+                    result = run_vision_inference(model, base64_image)
 
-                llm_start = time.time()
-                result = run_vision_inference(model, base64_image, prompt)
-                llm_time = time.time() - llm_start
-                metrics.record_llm_call(llm_time)
-
+                llm_summary = metrics.get_summary()
                 remaining = args.duration - elapsed
                 print(
                     f"[{elapsed:5.1f}s / {args.duration}s] "
                     f"State: {result.get('state', 'unknown'):12s} | "
-                    f"LLM: {llm_time:.2f}s | "
-                    f"FPS: {metrics.current_fps:.1f} | "
+                    f"LLM: {llm_summary.avg_llm_latency_ms:.0f}ms | "
+                    f"FPS: {llm_summary.fps:.1f} | "
                     f"Remaining: {remaining:.0f}s"
                 )
 
             time.sleep(0.01)
 
-    finally:
-        camera.stop()
-        summary = metrics.get_summary()
-        print("\n" + "=" * 60)
-        print("RESULTS: Experiment 1 - Vision Mode (llama-cpp-python)")
-        print("=" * 60)
-        print(json.dumps(summary, indent=2))
+    summary = metrics.get_summary()
+    print("\n" + "=" * 60)
+    print("RESULTS: Experiment 1 - Vision Mode (llama-cpp-python)")
+    print("=" * 60)
+    summary.print_report()
 
 
 if __name__ == "__main__":

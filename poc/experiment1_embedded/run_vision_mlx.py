@@ -18,7 +18,7 @@ from PIL import Image
 
 from shared.camera import CameraCapture
 from shared.metrics import MetricsCollector
-from shared.prompts import build_vision_prompt
+from shared.prompts import VISION_USER_PROMPT
 
 DEFAULT_MODEL_NAME: Final[str] = "mlx-community/Qwen2-VL-2B-Instruct-4bit"
 DEFAULT_DURATION: Final[int] = 120
@@ -76,7 +76,6 @@ def run_vision_inference(
     model,
     processor,
     image: Image.Image,
-    prompt: str,
     max_tokens: int,
 ) -> dict:
     """Run vision inference with mlx-vlm and return parsed result."""
@@ -86,7 +85,7 @@ def run_vision_inference(
         model,
         processor,
         image,
-        prompt,
+        VISION_USER_PROMPT,
         max_tokens=max_tokens,
         temp=0.1,
     )
@@ -109,8 +108,7 @@ def main() -> None:
     args = parse_args()
 
     model, processor = load_model(args.model_name)
-    camera = CameraCapture()
-    metrics = MetricsCollector(experiment_name="exp1_vision_mlx")
+    metrics = MetricsCollector()
 
     should_run = [True]
     signal.signal(signal.SIGINT, create_shutdown_handler(should_run))
@@ -118,58 +116,52 @@ def main() -> None:
     print(f"\nRunning for {args.duration}s with {args.interval}s LLM interval...")
     print("-" * 60)
 
-    start_time = time.time()
+    start_time = time.monotonic()
     last_llm_call = 0.0
 
-    try:
-        camera.start()
+    with CameraCapture() as camera:
+        metrics.start()
 
         while should_run[0]:
-            elapsed = time.time() - start_time
+            elapsed = time.monotonic() - start_time
             if elapsed >= args.duration:
                 break
 
-            frame_start = time.time()
-            frame, _landmarks = camera.read_frame()
-            frame_time = time.time() - frame_start
-            metrics.record_frame(frame_time)
+            with metrics.measure_frame():
+                frame_result = camera.read_frame()
 
-            now = time.time()
+            now = time.monotonic()
             if now - last_llm_call >= args.interval:
                 last_llm_call = now
 
-                if frame is None:
+                if frame_result.frame is None:
                     print(f"[{elapsed:5.1f}s] No frame available, skipping...")
                     continue
 
-                pil_image = frame_to_pil(frame)
-                prompt = build_vision_prompt()
+                pil_image = frame_to_pil(frame_result.frame)
 
-                llm_start = time.time()
-                result = run_vision_inference(
-                    model, processor, pil_image, prompt, args.max_tokens
-                )
-                llm_time = time.time() - llm_start
-                metrics.record_llm_call(llm_time)
+                with metrics.measure_llm():
+                    result = run_vision_inference(
+                        model, processor, pil_image, args.max_tokens
+                    )
 
+                llm_summary = metrics.get_summary()
                 remaining = args.duration - elapsed
                 print(
                     f"[{elapsed:5.1f}s / {args.duration}s] "
                     f"State: {result.get('state', 'unknown'):12s} | "
-                    f"LLM: {llm_time:.2f}s | "
-                    f"FPS: {metrics.current_fps:.1f} | "
+                    f"LLM: {llm_summary.avg_llm_latency_ms:.0f}ms | "
+                    f"FPS: {llm_summary.fps:.1f} | "
                     f"Remaining: {remaining:.0f}s"
                 )
 
             time.sleep(0.01)
 
-    finally:
-        camera.stop()
-        summary = metrics.get_summary()
-        print("\n" + "=" * 60)
-        print("RESULTS: Experiment 1 - Vision Mode (mlx-vlm)")
-        print("=" * 60)
-        print(json.dumps(summary, indent=2))
+    summary = metrics.get_summary()
+    print("\n" + "=" * 60)
+    print("RESULTS: Experiment 1 - Vision Mode (mlx-vlm)")
+    print("=" * 60)
+    summary.print_report()
 
 
 if __name__ == "__main__":
