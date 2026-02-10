@@ -18,11 +18,25 @@ from PIL import Image
 
 from shared.camera import CameraCapture
 from shared.metrics import MetricsCollector
+from shared.model_config import get_vision_model
 from shared.prompts import VISION_USER_PROMPT
 
 DEFAULT_MODEL_NAME: Final[str] = "mlx-community/Qwen2-VL-2B-Instruct-4bit"
 DEFAULT_DURATION: Final[int] = 120
 DEFAULT_INTERVAL: Final[int] = 15
+
+
+def _resolve_model_name(args: argparse.Namespace) -> str:
+    """Resolve the model name from explicit --model-name or --model-tier.
+
+    Falls back to the legacy 2B model with a warning when the recommended
+    tier is requested but not available.
+    """
+    if args.model_name != DEFAULT_MODEL_NAME:
+        return args.model_name
+
+    tier = "recommended" if args.model_tier == "recommended" else "not_recommended"
+    return get_vision_model("mlx", tier=tier)
 
 
 def parse_args() -> argparse.Namespace:
@@ -34,6 +48,13 @@ def parse_args() -> argparse.Namespace:
         type=str,
         default=DEFAULT_MODEL_NAME,
         help=f"MLX vision model name or path (default: {DEFAULT_MODEL_NAME})",
+    )
+    parser.add_argument(
+        "--model-tier",
+        type=str,
+        choices=["recommended", "lightweight"],
+        default="lightweight",
+        help="Model tier: recommended (7B) or lightweight (2B legacy, default)",
     )
     parser.add_argument(
         "--duration",
@@ -110,7 +131,8 @@ def create_shutdown_handler(should_run: list[bool]):
 def main() -> None:
     args = parse_args()
 
-    model, processor = load_model(args.model_name)
+    resolved_name = _resolve_model_name(args)
+    model, processor = load_model(resolved_name)
     metrics = MetricsCollector()
 
     should_run = [True]

@@ -3,9 +3,10 @@
 Downloads required GGUF, MLX, and MediaPipe models.
 
 Usage:
-    python download_models.py              # Download all models
-    python download_models.py --text-only  # Download text models only
-    python download_models.py --check      # Check which models are available
+    python download_models.py                  # Download all models
+    python download_models.py --text-only      # Download text models only
+    python download_models.py --recommended    # Download recommended 7B models only
+    python download_models.py --check          # Check which models are available
 """
 
 from __future__ import annotations
@@ -18,6 +19,22 @@ from pathlib import Path
 from typing import Optional
 
 MODELS_DIR = Path(__file__).parent / "models"
+
+# Model tiers for state classification:
+#
+# TIER 1 (Recommended - best accuracy):
+#   Text: Qwen2.5-7B-Instruct (~4.7GB GGUF Q4_K_M)
+#   Vision: Qwen2.5-VL-7B-Instruct (~5.0GB GGUF Q4_K_M)
+#   Requires: ~8GB RAM for text, ~10GB for vision
+#
+# TIER 2 (Lightweight - acceptable for text mode only):
+#   Text: Qwen2.5-3B-Instruct (~2.0GB GGUF Q4_K_M)
+#   Vision: NOT RECOMMENDED at 2-3B size
+#   Requires: ~4GB RAM
+#
+# TIER 3 (Not recommended):
+#   Qwen2-VL-2B: Too small, produces garbage output
+#   Qwen3-VL-8B for text-only: VLM architecture wastes params on vision encoder
 
 # --- Model definitions ---
 
@@ -45,6 +62,13 @@ class MLXModel:
 
 TEXT_GGUF_MODELS = (
     GGUFModel(
+        name="qwen2.5-7b-instruct-q4km",
+        repo_id="Qwen/Qwen2.5-7B-Instruct-GGUF",
+        filename="qwen2.5-7b-instruct-q4_k_m.gguf",
+        description="Recommended for text mode - better threshold reasoning",
+        size_gb=4.7,
+    ),
+    GGUFModel(
         name="qwen2.5-3b-instruct-q4km",
         repo_id="Qwen/Qwen2.5-3B-Instruct-GGUF",
         filename="qwen2.5-3b-instruct-q4_k_m.gguf",
@@ -55,6 +79,12 @@ TEXT_GGUF_MODELS = (
 
 TEXT_MLX_MODELS = (
     MLXModel(
+        name="qwen2.5-7b-instruct-4bit",
+        repo_id="Qwen/Qwen2.5-7B-Instruct-4bit",
+        description="Recommended for MLX text mode - better accuracy",
+        size_gb=4.4,
+    ),
+    MLXModel(
         name="qwen2.5-3b-instruct-4bit",
         repo_id="mlx-community/Qwen2.5-3B-Instruct-4bit",
         description="Qwen2.5-3B-Instruct 4-bit (text, MLX)",
@@ -64,22 +94,40 @@ TEXT_MLX_MODELS = (
 
 VISION_GGUF_MODELS = (
     GGUFModel(
+        name="qwen2.5-vl-7b-instruct-q4km",
+        repo_id="Qwen/Qwen2.5-VL-7B-Instruct-GGUF",
+        filename="qwen2.5-vl-7b-instruct-q4_k_m.gguf",
+        description="Recommended for vision mode - minimum viable VLM size",
+        size_gb=5.0,
+    ),
+    GGUFModel(
         name="qwen2-vl-2b-instruct-q4km",
         repo_id="gaianet/Qwen2-VL-2B-Instruct-GGUF",
         filename="Qwen2-VL-2B-Instruct-Q4_K_M.gguf",
-        description="Qwen2-VL-2B-Instruct GGUF Q4_K_M (vision, llama.cpp)",
+        description="Qwen2-VL-2B-Instruct GGUF Q4_K_M (vision, llama.cpp) - NOT RECOMMENDED",
         size_gb=1.5,
     ),
 )
 
 VISION_MLX_MODELS = (
     MLXModel(
+        name="qwen2.5-vl-7b-instruct-4bit",
+        repo_id="Qwen/Qwen2.5-VL-7B-Instruct-4bit",
+        description="Recommended for MLX vision mode - minimum viable VLM size",
+        size_gb=4.8,
+    ),
+    MLXModel(
         name="qwen2-vl-2b-instruct-4bit",
         repo_id="mlx-community/Qwen2-VL-2B-Instruct-4bit",
-        description="Qwen2-VL-2B-Instruct 4-bit (vision, MLX)",
+        description="Qwen2-VL-2B-Instruct 4-bit (vision, MLX) - NOT RECOMMENDED",
         size_gb=1.5,
     ),
 )
+
+# Indices into the model tuples for tier-based selection.
+# Index 0 = recommended (7B), index 1 = lightweight/legacy (3B/2B).
+_RECOMMENDED_IDX = 0
+_LIGHTWEIGHT_IDX = 1
 
 # MediaPipe FaceLandmarker model (required for camera.py)
 _FACE_LANDMARKER_URL = (
@@ -248,13 +296,20 @@ def check_models() -> None:
     print()
 
 
-def download_all(text_only: bool = False) -> None:
-    """Download all required models.
+def download_all(
+    text_only: bool = False,
+    recommended_only: bool = False,
+) -> None:
+    """Download required models.
 
     Args:
         text_only: If True, skip vision models.
+        recommended_only: If True, download only recommended 7B models.
     """
-    print("\n=== Downloading Models ===\n")
+    if recommended_only:
+        print("\n=== Downloading Recommended (7B) Models ===\n")
+    else:
+        print("\n=== Downloading Models ===\n")
 
     errors: list[str] = []
 
@@ -265,8 +320,13 @@ def download_all(text_only: bool = False) -> None:
         print(f"  [ERROR] face_landmarker: {e}")
         errors.append("face_landmarker")
 
+    text_gguf = (TEXT_GGUF_MODELS[_RECOMMENDED_IDX:_RECOMMENDED_IDX + 1]
+                 if recommended_only else TEXT_GGUF_MODELS)
+    text_mlx = (TEXT_MLX_MODELS[_RECOMMENDED_IDX:_RECOMMENDED_IDX + 1]
+                if recommended_only else TEXT_MLX_MODELS)
+
     print("\nText models (GGUF):")
-    for model in TEXT_GGUF_MODELS:
+    for model in text_gguf:
         try:
             download_gguf_model(model)
         except Exception as e:
@@ -274,7 +334,7 @@ def download_all(text_only: bool = False) -> None:
             errors.append(model.name)
 
     print("\nText models (MLX):")
-    for model in TEXT_MLX_MODELS:
+    for model in text_mlx:
         try:
             download_mlx_model(model)
         except Exception as e:
@@ -282,8 +342,13 @@ def download_all(text_only: bool = False) -> None:
             errors.append(model.name)
 
     if not text_only:
+        vision_gguf = (VISION_GGUF_MODELS[_RECOMMENDED_IDX:_RECOMMENDED_IDX + 1]
+                       if recommended_only else VISION_GGUF_MODELS)
+        vision_mlx = (VISION_MLX_MODELS[_RECOMMENDED_IDX:_RECOMMENDED_IDX + 1]
+                      if recommended_only else VISION_MLX_MODELS)
+
         print("\nVision models (GGUF):")
-        for model in VISION_GGUF_MODELS:
+        for model in vision_gguf:
             try:
                 download_gguf_model(model)
             except Exception as e:
@@ -291,7 +356,7 @@ def download_all(text_only: bool = False) -> None:
                 errors.append(model.name)
 
         print("\nVision models (MLX):")
-        for model in VISION_MLX_MODELS:
+        for model in vision_mlx:
             try:
                 download_mlx_model(model)
             except Exception as e:
@@ -314,6 +379,11 @@ def main() -> None:
         help="Download text models only (skip vision models)",
     )
     parser.add_argument(
+        "--recommended",
+        action="store_true",
+        help="Download only recommended 7B models (skip smaller 2B/3B)",
+    )
+    parser.add_argument(
         "--check",
         action="store_true",
         help="Check which models are already downloaded",
@@ -323,7 +393,10 @@ def main() -> None:
     if args.check:
         check_models()
     else:
-        download_all(text_only=args.text_only)
+        download_all(
+            text_only=args.text_only,
+            recommended_only=args.recommended,
+        )
 
 
 if __name__ == "__main__":
