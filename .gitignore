@@ -1,3 +1,7 @@
+.claude/
+PROGRESS.md
+poc/PROGRESS.md
+
 poc/.venv/
 .venv/
 *.egg-info/
