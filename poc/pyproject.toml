@@ -20,8 +20,9 @@ llama = [
     "llama-cpp-python>=0.3.0",
 ]
 mlx = [
-    "mlx-lm>=0.21",
-    "mlx-vlm>=0.1.0",
+    "mlx-lm>=0.21,<0.30",
+    "mlx-vlm>=0.1.0,<0.2",
+    "transformers>=4.45,<4.52",
 ]
 lmstudio = [
     "openai>=1.30",
