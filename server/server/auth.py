@@ -12,6 +12,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import JWTError, jwt
 from passlib.context import CryptContext
 
+from server.deps import get_firestore
 from server.models.schemas import TokenResponse, UserLogin, UserRegister
 from server.services.firestore_client import FirestoreClient
 
@@ -21,25 +22,17 @@ logger = logging.getLogger(__name__)
 # Configuration
 # ---------------------------------------------------------------------------
 
-JWT_SECRET = os.environ.get("JWT_SECRET", "dev-secret-do-not-use-in-production")
+JWT_SECRET = os.environ.get("JWT_SECRET", "")
+if not JWT_SECRET:
+    if os.environ.get("ENV", "development") == "production":
+        raise RuntimeError("JWT_SECRET must be set in production")
+    JWT_SECRET = "dev-secret-do-not-use-in-production"
+
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_DAYS = 7
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 security = HTTPBearer()
-
-# ---------------------------------------------------------------------------
-# Shared service instances (initialised once at import time)
-# ---------------------------------------------------------------------------
-
-_firestore: FirestoreClient | None = None
-
-
-def _get_firestore() -> FirestoreClient:
-    global _firestore
-    if _firestore is None:
-        _firestore = FirestoreClient()
-    return _firestore
 
 
 # ---------------------------------------------------------------------------
@@ -90,7 +83,7 @@ router = APIRouter()
 @router.post("/register", response_model=TokenResponse)
 async def register(body: UserRegister):
     """Register a new user with email and password."""
-    db = _get_firestore()
+    db = get_firestore()
 
     # Check if user already exists
     existing_id, _ = await db.find_user_by_email(body.email)
@@ -113,14 +106,14 @@ async def register(body: UserRegister):
     )
 
     token = _create_token(user_id, body.email)
-    logger.info("User registered: %s (%s)", user_id, body.email)
+    logger.info("User registered: %s", user_id)
     return TokenResponse(access_token=token)
 
 
 @router.post("/login", response_model=TokenResponse)
 async def login(body: UserLogin):
     """Authenticate with email and password, returning a JWT."""
-    db = _get_firestore()
+    db = get_firestore()
 
     user_id, user_doc = await db.find_user_by_email(body.email)
     if user_id is None or user_doc is None:
@@ -136,5 +129,5 @@ async def login(body: UserLogin):
         )
 
     token = _create_token(user_id, body.email)
-    logger.info("User logged in: %s (%s)", user_id, body.email)
+    logger.info("User logged in: %s", user_id)
     return TokenResponse(access_token=token)

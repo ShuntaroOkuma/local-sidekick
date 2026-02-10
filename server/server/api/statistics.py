@@ -5,19 +5,10 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends
 
 from server.auth import get_current_user
+from server.deps import get_firestore
 from server.models.schemas import DailyStatistics
-from server.services.firestore_client import FirestoreClient
 
 router = APIRouter()
-
-_firestore: FirestoreClient | None = None
-
-
-def _get_firestore() -> FirestoreClient:
-    global _firestore
-    if _firestore is None:
-        _firestore = FirestoreClient()
-    return _firestore
 
 
 @router.post("/")
@@ -29,7 +20,7 @@ async def upload_statistics(
 
     Stored under ``users/{userId}/daily_stats/{date}``.
     """
-    db = _get_firestore()
+    db = get_firestore()
     await db.save_daily_stats(
         user["user_id"],
         stats.date,

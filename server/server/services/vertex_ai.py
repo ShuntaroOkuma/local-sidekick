@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import os
@@ -52,8 +53,10 @@ class VertexAIService:
 
         prompt = self._build_prompt(stats)
         try:
-            response = self._model.generate_content(prompt)
-            return self._parse_response(response.text)
+            response = await asyncio.to_thread(
+                self._model.generate_content, prompt
+            )
+            return self._parse_response(response.text, stats)
         except Exception as exc:
             logger.error("Vertex AI generation failed: %s", exc)
             return self._dummy_report(stats)
@@ -83,7 +86,7 @@ class VertexAIService:
   "tomorrow_tip": "明日試してほしい具体的な1つの行動提案"
 }}"""
 
-    def _parse_response(self, text: str) -> dict[str, Any]:
+    def _parse_response(self, text: str, stats: dict[str, Any]) -> dict[str, Any]:
         """Extract JSON from Gemini response (handles ```json blocks)."""
         cleaned = text
         if "```" in cleaned:
@@ -97,7 +100,11 @@ class VertexAIService:
                 if in_block:
                     json_lines.append(line)
             cleaned = "\n".join(json_lines)
-        return json.loads(cleaned.strip())
+        try:
+            return json.loads(cleaned.strip())
+        except json.JSONDecodeError:
+            logger.warning("Failed to parse Gemini response: %s", text[:200])
+            return self._dummy_report(stats)
 
     def _dummy_report(self, stats: dict[str, Any]) -> dict[str, Any]:
         """Return a plausible placeholder report for local development."""
