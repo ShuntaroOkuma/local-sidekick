@@ -1,0 +1,43 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "local-sidekick-poc"
+version = "0.1.0"
+description = "Local Sidekick PoC - On-device drowsiness/focus/distraction detection"
+requires-python = ">=3.11"
+dependencies = [
+    "opencv-python>=4.9",
+    "mediapipe>=0.10.14",
+    "numpy>=1.26",
+    "psutil>=5.9",
+    "Pillow>=10.0",
+]
+
+[project.optional-dependencies]
+llama = [
+    "llama-cpp-python>=0.3.0",
+]
+mlx = [
+    "mlx-lm>=0.21,<0.30",
+    "mlx-vlm>=0.1.0,<0.2",
+    "transformers>=4.45,<4.52",
+]
+lmstudio = [
+    "openai>=1.30",
+]
+pcusage = [
+    "pynput>=1.7.6",
+    "pyobjc-framework-Cocoa>=10.0",
+    "pyobjc-framework-Quartz>=10.0",
+]
+download = [
+    "huggingface-hub>=0.25",
+]
+all = [
+    "local-sidekick-poc[llama,mlx,lmstudio,pcusage,download]",
+]
+
+[tool.setuptools.packages.find]
+include = ["shared*", "experiment1_embedded*", "experiment2_lmstudio*", "experiment3_pcusage*"]
