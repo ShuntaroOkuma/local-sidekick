@@ -48,7 +48,7 @@ export function useEngineState() {
         try {
           const data = JSON.parse(event.data);
           // Distinguish state updates from notification messages
-          if (data.type === "notification") {
+          if (data.type === "notification" || data.notification_type) {
             setNotification({
               type: data.notification_type,
               message: data.message,
