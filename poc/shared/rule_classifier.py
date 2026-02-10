@@ -183,8 +183,9 @@ def classify_pc_usage(usage: dict) -> Optional[ClassificationResult]:
             source="rule",
         )
 
-    # Rule 2: Clear distraction
-    if app_switches > 8 or (app_switches > 5 and unique_apps > 4):
+    # Rule 2: Clear distraction (relaxed thresholds — PoC showed
+    # the previous >8 / >5+4 almost never triggered in practice)
+    if app_switches > 4 or (app_switches > 2 and unique_apps > 3):
         return ClassificationResult(
             state="distracted",
             confidence=0.85,

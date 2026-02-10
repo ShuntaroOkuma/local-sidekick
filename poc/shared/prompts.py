@@ -62,7 +62,7 @@ PC_USAGE_SYSTEM_PROMPT = """You are a work state classifier. Analyze PC usage da
 RULES (check in STRICT order, return FIRST match):
 1. is_idle is true OR idle_seconds > 60 -> state="idle"
 2. FORBIDDEN: If is_idle is false AND idle_seconds <= 60, you MUST NOT return "idle". The user may be reading or thinking. Low activity rates alone do NOT mean idle.
-3. app_switches_in_window > 8 OR (app_switches_in_window > 5 AND unique_apps_in_window > 4) -> state="distracted"
+3. app_switches_in_window > 4 OR (app_switches_in_window > 2 AND unique_apps_in_window > 3) -> state="distracted"
 4. keyboard_rate_window > 10 AND active_app is work-related (editor/terminal/IDE) -> state="focused"
 5. Otherwise -> state="focused" with lower confidence (user is engaged but not typing heavily)
 
@@ -78,8 +78,8 @@ Output: {"state":"focused","confidence":0.6,"reasoning":"is_idle=false, user may
 Input: {"active_app":"Code","idle_seconds":0.5,"keyboard_events_per_min":85.0,"mouse_events_per_min":200.0,"app_switches_in_window":1}
 Output: {"state":"focused","confidence":0.9,"reasoning":"Active in Code editor, low idle time, minimal app switching"}
 
-Input: {"active_app":"Safari","idle_seconds":2.0,"keyboard_events_per_min":40.0,"app_switches_in_window":8,"unique_apps_in_window":5}
-Output: {"state":"distracted","confidence":0.85,"reasoning":"8 app switches with 5 unique apps indicates fragmented attention"}"""
+Input: {"active_app":"Safari","idle_seconds":2.0,"keyboard_events_per_min":40.0,"app_switches_in_window":5,"unique_apps_in_window":4}
+Output: {"state":"distracted","confidence":0.85,"reasoning":"5 app switches with 4 unique apps indicates fragmented attention"}"""
 
 PC_USAGE_USER_PROMPT_TEMPLATE = """Analyze the following PC usage data and classify the user's current work state.
 
