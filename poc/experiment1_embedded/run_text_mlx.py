@@ -20,6 +20,7 @@ from shared.features import FeatureTracker, extract_frame_features
 from shared.metrics import MetricsCollector
 from shared.model_config import get_text_model
 from shared.prompts import TEXT_SYSTEM_PROMPT, format_text_prompt
+from shared.results import ResultsCollector
 from shared.rule_classifier import classify_camera_text
 
 DEFAULT_MODEL_NAME: Final[str] = "mlx-community/Qwen2.5-3B-Instruct-4bit"
@@ -134,6 +135,7 @@ def main() -> None:
     model, tokenizer = load_model(resolved_name)
     tracker = FeatureTracker()
     metrics = MetricsCollector()
+    results_collector = ResultsCollector("text_mlx")
 
     should_run = [True]
     signal.signal(signal.SIGINT, create_shutdown_handler(should_run))
@@ -165,20 +167,40 @@ def main() -> None:
             if now - last_llm_call >= args.interval:
                 last_llm_call = now
 
+                snapshot_dict = snapshot.to_dict()
+                llm_start = time.monotonic()
+
                 # Try rule-based classification first
-                rule_result = classify_camera_text(snapshot.to_dict())
+                rule_result = classify_camera_text(snapshot_dict)
                 if rule_result is not None:
                     result = {
                         "state": rule_result.state,
                         "confidence": rule_result.confidence,
                         "reasoning": f"[rule] {rule_result.reasoning}",
                     }
+                    source = "rule"
+                    latency_ms = 0.0
+                    raw_response = ""
                 else:
                     features_json = snapshot.to_json()
                     user_prompt = format_text_prompt(features_json)
 
                     with metrics.measure_llm():
                         result = run_inference(model, tokenizer, user_prompt, args.max_tokens)
+                    source = "llm"
+                    latency_ms = (time.monotonic() - llm_start) * 1000
+                    raw_response = result.get("raw_response", "")
+
+                results_collector.add(
+                    elapsed_seconds=elapsed,
+                    state=result.get("state", "unknown"),
+                    confidence=result.get("confidence", 0.0),
+                    reasoning=result.get("reasoning", ""),
+                    source=source,
+                    latency_ms=latency_ms,
+                    raw_response=raw_response,
+                    features=snapshot_dict,
+                )
 
                 llm_summary = metrics.get_summary()
                 remaining = args.duration - elapsed
@@ -191,6 +213,8 @@ def main() -> None:
                 )
 
             time.sleep(0.01)
+
+    results_collector.save()
 
     summary = metrics.get_summary()
     print("\n" + "=" * 60)
