@@ -106,7 +106,7 @@ async def broadcast_state(state_data: dict) -> None:
     Args:
         state_data: Dict with state, confidence, camera_state, pc_state, timestamp.
     """
-    await manager.broadcast(state_data)
+    await manager.broadcast({"type": "state_update", **state_data})
 
 
 async def broadcast_notification(
