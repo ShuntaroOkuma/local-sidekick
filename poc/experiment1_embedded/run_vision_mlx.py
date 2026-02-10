@@ -19,6 +19,7 @@ from PIL import Image
 from shared.camera import CameraCapture
 from shared.metrics import MetricsCollector
 from shared.prompts import VISION_USER_PROMPT
+from shared.rule_classifier import classify_camera_vision
 
 DEFAULT_MODEL_NAME: Final[str] = "mlx-community/Qwen2-VL-2B-Instruct-4bit"
 DEFAULT_DURATION: Final[int] = 120
@@ -137,16 +138,25 @@ def main() -> None:
             if now - last_llm_call >= args.interval:
                 last_llm_call = now
 
-                if frame_result.frame is None:
-                    print(f"[{elapsed:5.1f}s] No frame available, skipping...")
-                    continue
+                # Rule-based pre-check: skip VLM if no face detected
+                rule_result = classify_camera_vision(frame_result.face_detected)
+                if rule_result is not None:
+                    result = {
+                        "state": rule_result.state,
+                        "confidence": rule_result.confidence,
+                        "reasoning": f"[rule] {rule_result.reasoning}",
+                    }
+                else:
+                    if frame_result.frame is None:
+                        print(f"[{elapsed:5.1f}s] No frame available, skipping...")
+                        continue
 
-                pil_image = frame_to_pil(frame_result.frame)
+                    pil_image = frame_to_pil(frame_result.frame)
 
-                with metrics.measure_llm():
-                    result = run_vision_inference(
-                        model, processor, pil_image, args.max_tokens
-                    )
+                    with metrics.measure_llm():
+                        result = run_vision_inference(
+                            model, processor, pil_image, args.max_tokens
+                        )
 
                 llm_summary = metrics.get_summary()
                 remaining = args.duration - elapsed

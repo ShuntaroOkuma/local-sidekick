@@ -20,6 +20,7 @@ from shared.camera import CameraCapture
 from shared.features import FeatureTracker, extract_frame_features
 from shared.metrics import MetricsCollector
 from shared.prompts import TEXT_SYSTEM_PROMPT, format_text_prompt
+from shared.rule_classifier import classify_camera_text
 
 DEFAULT_MODEL_PATH: Final[str] = str(
     Path(__file__).parent.parent / "models" / "qwen2.5-3b-instruct-q4_k_m.gguf"
@@ -139,11 +140,21 @@ def main() -> None:
             now = time.monotonic()
             if now - last_llm_call >= args.interval:
                 last_llm_call = now
-                features_json = snapshot.to_json()
-                user_prompt = format_text_prompt(features_json)
 
-                with metrics.measure_llm():
-                    result = run_inference(model, user_prompt)
+                # Try rule-based classification first
+                rule_result = classify_camera_text(snapshot.to_dict())
+                if rule_result is not None:
+                    result = {
+                        "state": rule_result.state,
+                        "confidence": rule_result.confidence,
+                        "reasoning": f"[rule] {rule_result.reasoning}",
+                    }
+                else:
+                    features_json = snapshot.to_json()
+                    user_prompt = format_text_prompt(features_json)
+
+                    with metrics.measure_llm():
+                        result = run_inference(model, user_prompt)
 
                 llm_summary = metrics.get_summary()
                 remaining = args.duration - elapsed
