@@ -6,10 +6,23 @@ import type {
   NotificationEntry,
 } from "./types";
 
-const BASE_URL = "http://localhost:18080";
+const DEFAULT_BASE_URL = "http://localhost:18080";
+
+let _baseUrl: string | null = null;
+
+async function getBaseUrl(): Promise<string> {
+  if (_baseUrl) return _baseUrl;
+  try {
+    _baseUrl = await (window as any).electronAPI?.getEngineUrl() ?? DEFAULT_BASE_URL;
+  } catch {
+    _baseUrl = DEFAULT_BASE_URL;
+  }
+  return _baseUrl;
+}
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
-  const url = `${BASE_URL}${path}`;
+  const base = await getBaseUrl();
+  const url = `${base}${path}`;
   const res = await fetch(url, {
     headers: {
       "Content-Type": "application/json",
