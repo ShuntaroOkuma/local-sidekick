@@ -79,6 +79,8 @@ class _WindowedCounters:
     _mouse_click_times: deque = field(default_factory=deque)
     _mouse_move_times: deque = field(default_factory=deque)
     _last_mouse_move_time: float = 0.0
+    _last_mouse_x: float = 0.0
+    _last_mouse_y: float = 0.0
     _lock: threading.Lock = field(default_factory=threading.Lock)
 
     def record_keyboard(self) -> None:
@@ -89,13 +91,20 @@ class _WindowedCounters:
         with self._lock:
             self._mouse_click_times.append(time.time())
 
-    def record_mouse_move(self) -> None:
+    def record_mouse_move(self, x: float, y: float) -> None:
         now = time.time()
         with self._lock:
-            # Throttle mouse moves to max 10/sec to avoid flooding
+            # Throttle: max 10/sec
             if now - self._last_mouse_move_time < 0.1:
                 return
+            # Ignore micro-movements (< 5px) to filter optical sensor noise
+            dx = x - self._last_mouse_x
+            dy = y - self._last_mouse_y
+            if dx * dx + dy * dy < 25.0:  # 5px threshold
+                return
             self._last_mouse_move_time = now
+            self._last_mouse_x = x
+            self._last_mouse_y = y
             self._mouse_move_times.append(now)
 
     def _prune(self, q: deque, now: float) -> None:
@@ -170,23 +179,39 @@ def _check_pynput_permission() -> bool:
 
 
 def get_active_app() -> str:
-    """Get the name of the frontmost application using NSWorkspace.
+    """Get the name of the frontmost application via AppleScript.
+
+    Uses osascript subprocess instead of NSWorkspace to avoid
+    NSRunLoop dependency (NSWorkspace.frontmostApplication() returns
+    stale data when called from threads without an active RunLoop).
 
     Returns 'Unknown' if detection fails.
     """
     try:
-        from AppKit import NSWorkspace
+        import subprocess
 
-        workspace = NSWorkspace.sharedWorkspace()
-        active = workspace.frontmostApplication()
-        name = active.localizedName()
-        return str(name) if name else "Unknown"
+        result = subprocess.run(
+            [
+                "osascript", "-e",
+                'tell application "System Events" to get name of '
+                "first application process whose frontmost is true",
+            ],
+            capture_output=True,
+            text=True,
+            timeout=2,
+        )
+        name = result.stdout.strip()
+        return name if name else "Unknown"
     except Exception:
         return "Unknown"
 
 
 def get_idle_seconds() -> float:
-    """Get seconds since last user input event using CGEventSource.
+    """Get seconds since last *meaningful* user input.
+
+    Uses keyboard-only idle from CGEventSource (immune to mouse
+    micro-vibrations) combined with significant mouse activity
+    tracked by the caller.
 
     Returns 0.0 if detection fails.
     """
@@ -194,14 +219,21 @@ def get_idle_seconds() -> float:
         from Quartz import (
             CGEventSourceSecondsSinceLastEventType,
             kCGEventSourceStateCombinedSessionState,
-            kCGAnyInputEventType,
+            kCGEventKeyDown,
+            kCGEventLeftMouseDown,
         )
 
-        idle = CGEventSourceSecondsSinceLastEventType(
+        keyboard_idle = CGEventSourceSecondsSinceLastEventType(
             kCGEventSourceStateCombinedSessionState,
-            kCGAnyInputEventType,
+            kCGEventKeyDown,
         )
-        return max(0.0, float(idle))
+        mouse_click_idle = CGEventSourceSecondsSinceLastEventType(
+            kCGEventSourceStateCombinedSessionState,
+            kCGEventLeftMouseDown,
+        )
+        # Idle = time since EITHER last keypress or last mouse click
+        idle = min(float(keyboard_idle), float(mouse_click_idle))
+        return max(0.0, idle)
     except Exception:
         return 0.0
 
@@ -322,8 +354,8 @@ class PCUsageMonitor:
             ) -> None:
                 self._counters.record_mouse_click()
 
-            def on_mouse_move(_x: object, _y: object) -> None:
-                self._counters.record_mouse_move()
+            def on_mouse_move(x: object, y: object) -> None:
+                self._counters.record_mouse_move(float(x), float(y))
 
             self._keyboard_listener = keyboard.Listener(on_press=on_key_press)
             self._mouse_listener = mouse.Listener(
