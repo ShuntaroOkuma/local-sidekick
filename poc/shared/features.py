@@ -42,6 +42,7 @@ HEAD_POSE_LANDMARK_INDICES = (1, 199, 33, 263, 61, 291)
 
 # Thresholds
 EAR_CLOSED_THRESHOLD = 0.20
+EAR_HALF_CLOSED_THRESHOLD = 0.25
 PERCLOS_DROWSY_THRESHOLD = 0.15
 MAR_YAWN_THRESHOLD = 0.6
 BLINK_NORMAL_RANGE = (15, 20)  # per 60 seconds
@@ -83,6 +84,7 @@ class FrameFeatures:
     ear_left: Optional[float] = None
     ear_average: Optional[float] = None
     eyes_closed: Optional[bool] = None
+    eyes_half_closed: Optional[bool] = None
     mar: Optional[float] = None
     yawning: Optional[bool] = None
     head_pose: Optional[HeadPose] = None
@@ -128,6 +130,19 @@ class TrackerSnapshot:
     mar: Optional[float] = None
     yawning: Optional[bool] = None
     head_pose: Optional[HeadPose] = None
+    # Window statistics for EAR
+    ear_average_window: Optional[float] = None
+    ear_std_window: Optional[float] = None
+    ear_min_window: Optional[float] = None
+    eyes_half_closed_ratio: Optional[float] = None
+    # Head movement statistics
+    head_yaw_std: Optional[float] = None
+    head_pitch_std: Optional[float] = None
+    head_yaw_max_abs: Optional[float] = None
+    head_pitch_max_abs: Optional[float] = None
+    head_movement_count: int = 0
+    gaze_off_screen_ratio: Optional[float] = None
+    face_not_detected_ratio: Optional[float] = None
     frames_in_window: int = 0
 
     def to_dict(self) -> dict:
@@ -156,6 +171,22 @@ class TrackerSnapshot:
                     "yaw": _round(self.head_pose.yaw),
                     "roll": _round(self.head_pose.roll),
                 }
+            if self.ear_average_window is not None:
+                result["ear_average_window"] = _round(self.ear_average_window)
+                result["ear_std_window"] = _round(self.ear_std_window)
+                result["ear_min_window"] = _round(self.ear_min_window)
+            if self.eyes_half_closed_ratio is not None:
+                result["eyes_half_closed_ratio"] = _round(self.eyes_half_closed_ratio)
+            if self.head_yaw_std is not None:
+                result["head_yaw_std"] = _round(self.head_yaw_std)
+                result["head_pitch_std"] = _round(self.head_pitch_std)
+                result["head_yaw_max_abs"] = _round(self.head_yaw_max_abs)
+                result["head_pitch_max_abs"] = _round(self.head_pitch_max_abs)
+                result["head_movement_count"] = self.head_movement_count
+            if self.gaze_off_screen_ratio is not None:
+                result["gaze_off_screen_ratio"] = _round(self.gaze_off_screen_ratio)
+            if self.face_not_detected_ratio is not None:
+                result["face_not_detected_ratio"] = _round(self.face_not_detected_ratio)
         return result
 
     def to_json(self) -> str:
@@ -317,6 +348,7 @@ def extract_frame_features(
     ear_left = compute_ear(landmarks, LEFT_EYE_INDICES)
     ear_avg = (ear_right + ear_left) / 2.0
     eyes_closed = ear_avg < EAR_CLOSED_THRESHOLD
+    eyes_half_closed = EAR_CLOSED_THRESHOLD <= ear_avg < EAR_HALF_CLOSED_THRESHOLD
 
     mar = compute_mar(landmarks)
     yawning = mar > MAR_YAWN_THRESHOLD
@@ -330,6 +362,7 @@ def extract_frame_features(
         ear_left=ear_left,
         ear_average=ear_avg,
         eyes_closed=eyes_closed,
+        eyes_half_closed=eyes_half_closed,
         mar=mar,
         yawning=yawning,
         head_pose=head_pose,
@@ -395,6 +428,81 @@ class FeatureTracker:
         else:
             blinks_per_minute = 0.0
 
+        # EAR window statistics
+        ear_values = [f.ear_average for f in face_frames if f.ear_average is not None]
+        if ear_values:
+            ear_average_window = sum(ear_values) / len(ear_values)
+            ear_min_window = min(ear_values)
+            if len(ear_values) > 1:
+                mean = ear_average_window
+                ear_std_window = (sum((v - mean) ** 2 for v in ear_values) / len(ear_values)) ** 0.5
+            else:
+                ear_std_window = 0.0
+        else:
+            ear_average_window = None
+            ear_std_window = None
+            ear_min_window = None
+
+        # Eyes half-closed ratio
+        if total_face_frames > 0:
+            half_closed_count = sum(
+                1 for f in face_frames
+                if f.eyes_half_closed is True
+            )
+            eyes_half_closed_ratio = half_closed_count / total_face_frames
+        else:
+            eyes_half_closed_ratio = None
+
+        # Head pose statistics
+        yaw_values = [
+            f.head_pose.yaw for f in face_frames
+            if f.head_pose is not None
+        ]
+        pitch_values = [
+            f.head_pose.pitch for f in face_frames
+            if f.head_pose is not None
+        ]
+
+        if yaw_values:
+            yaw_mean = sum(yaw_values) / len(yaw_values)
+            pitch_mean = sum(pitch_values) / len(pitch_values)
+            head_yaw_std = (sum((v - yaw_mean) ** 2 for v in yaw_values) / len(yaw_values)) ** 0.5 if len(yaw_values) > 1 else 0.0
+            head_pitch_std = (sum((v - pitch_mean) ** 2 for v in pitch_values) / len(pitch_values)) ** 0.5 if len(pitch_values) > 1 else 0.0
+            head_yaw_max_abs = max(abs(v) for v in yaw_values)
+            head_pitch_max_abs = max(abs(v) for v in pitch_values)
+        else:
+            head_yaw_std = None
+            head_pitch_std = None
+            head_yaw_max_abs = None
+            head_pitch_max_abs = None
+
+        # Head movement count (>5 degree change between consecutive frames)
+        head_movement_count = 0
+        pose_frames = [f for f in face_frames if f.head_pose is not None]
+        for i in range(1, len(pose_frames)):
+            prev = pose_frames[i - 1].head_pose
+            curr = pose_frames[i].head_pose
+            if abs(curr.yaw - prev.yaw) > 5.0 or abs(curr.pitch - prev.pitch) > 5.0:
+                head_movement_count += 1
+
+        # Gaze off-screen ratio
+        if yaw_values:
+            off_screen_count = sum(
+                1 for f in face_frames
+                if f.head_pose is not None and (abs(f.head_pose.yaw) > 15 or abs(f.head_pose.pitch) > 15)
+            )
+            gaze_off_screen_ratio = off_screen_count / len(face_frames)
+        else:
+            gaze_off_screen_ratio = None
+
+        # Face not detected ratio (over all frames, not just face frames)
+        all_frames = len(self._history)
+        if all_frames > 0:
+            not_detected = sum(1 for f in self._history if not f.face_detected)
+            face_not_detected_ratio = not_detected / all_frames
+        else:
+            face_not_detected_ratio = None
+
         return TrackerSnapshot(
             timestamp=features.timestamp,
             face_detected=True,
@@ -408,6 +516,17 @@ class FeatureTracker:
             yawning=features.yawning,
             head_pose=features.head_pose,
             frames_in_window=len(self._history),
+            ear_average_window=ear_average_window,
+            ear_std_window=ear_std_window,
+            ear_min_window=ear_min_window,
+            eyes_half_closed_ratio=eyes_half_closed_ratio,
+            head_yaw_std=head_yaw_std,
+            head_pitch_std=head_pitch_std,
+            head_yaw_max_abs=head_yaw_max_abs,
+            head_pitch_max_abs=head_pitch_max_abs,
+            head_movement_count=head_movement_count,
+            gaze_off_screen_ratio=gaze_off_screen_ratio,
+            face_not_detected_ratio=face_not_detected_ratio,
         )
 
     def _prune_old_entries(self, current_time: float) -> None:
