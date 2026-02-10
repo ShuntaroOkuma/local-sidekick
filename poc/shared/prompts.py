@@ -60,20 +60,20 @@ VISION_USER_PROMPT = "Analyze this webcam image and classify the person's curren
 PC_USAGE_SYSTEM_PROMPT = """You are a work state classifier. Analyze PC usage data JSON and return a JSON object.
 
 RULES (check in STRICT order, return FIRST match):
-1. idle_seconds > 30 -> state="idle" (HIGHEST PRIORITY, regardless of cumulative activity rates)
-2. is_idle is true -> state="idle"
-3. app_switches_in_window > 5 OR unique_apps_in_window > 4 -> state="distracted"
+1. is_idle is true OR idle_seconds > 60 -> state="idle"
+2. FORBIDDEN: If is_idle is false AND idle_seconds <= 60, you MUST NOT return "idle". The user may be reading or thinking. Low activity rates alone do NOT mean idle.
+3. app_switches_in_window > 8 OR (app_switches_in_window > 5 AND unique_apps_in_window > 4) -> state="distracted"
 4. keyboard_rate_window > 10 AND active_app is work-related (editor/terminal/IDE) -> state="focused"
-5. keyboard_rate_window <= 5 AND mouse_rate_window <= 10 -> state="idle"
-6. Otherwise -> assess from overall context
-
-CRITICAL: idle_seconds shows CURRENT inactivity. *_per_min fields may be cumulative session averages. ALWAYS prioritize idle_seconds for detecting current state.
+5. Otherwise -> state="focused" with lower confidence (user is engaged but not typing heavily)
 
 Output ONLY: {"state":"focused"|"distracted"|"idle","confidence":0.0-1.0,"reasoning":"brief"}
 
 EXAMPLES:
-Input: {"active_app":"Code","idle_seconds":52.2,"keyboard_events_per_min":129.1,"mouse_events_per_min":339.1,"app_switches_in_window":0}
-Output: {"state":"idle","confidence":0.95,"reasoning":"idle_seconds=52.2 exceeds 30s threshold, user currently inactive"}
+Input: {"active_app":"Code","idle_seconds":72.3,"is_idle":true,"keyboard_events_per_min":129.1,"mouse_events_per_min":339.1,"app_switches_in_window":0}
+Output: {"state":"idle","confidence":0.95,"reasoning":"is_idle=true, idle_seconds=72.3 exceeds 60s"}
+
+Input: {"active_app":"iTerm2","idle_seconds":35.0,"is_idle":false,"keyboard_events_per_min":0.0,"mouse_events_per_min":0.0,"app_switches_in_window":0}
+Output: {"state":"focused","confidence":0.6,"reasoning":"is_idle=false, user may be reading terminal output"}
 
 Input: {"active_app":"Code","idle_seconds":0.5,"keyboard_events_per_min":85.0,"mouse_events_per_min":200.0,"app_switches_in_window":1}
 Output: {"state":"focused","confidence":0.9,"reasoning":"Active in Code editor, low idle time, minimal app switching"}

@@ -175,11 +175,11 @@ def classify_pc_usage(usage: dict) -> Optional[ClassificationResult]:
     mouse_rate = usage.get("mouse_rate_window", usage.get("mouse_events_per_min", 0))
 
     # Rule 1: Idle (highest priority)
-    if idle_seconds > 30 or is_idle:
+    if idle_seconds > 60 or is_idle:
         return ClassificationResult(
             state="idle",
             confidence=0.95,
-            reasoning=f"User idle for {idle_seconds:.1f}s (threshold: 30s)",
+            reasoning=f"User idle for {idle_seconds:.1f}s (threshold: 60s)",
             source="rule",
         )
 
@@ -194,9 +194,9 @@ def classify_pc_usage(usage: dict) -> Optional[ClassificationResult]:
 
     # Rule 3: Clear focus
     active_app = usage.get("active_app", "")
-    work_apps = {"Code", "Terminal", "iTerm2", "Warp", "Alacritty", "kitty",
-                 "IntelliJ IDEA", "PyCharm", "WebStorm", "Xcode", "Vim", "Neovim",
-                 "Emacs", "Sublime Text", "Visual Studio Code", "Cursor", "Zed"}
+    work_apps = {"Code", "Visual Studio Code", "Terminal", "iTerm2", "Warp",
+                 "Alacritty", "kitty", "IntelliJ IDEA", "PyCharm", "WebStorm",
+                 "Xcode", "Vim", "Neovim", "Emacs", "Sublime Text", "Cursor", "Zed"}
     if (
         idle_seconds < 5
         and app_switches <= 2
