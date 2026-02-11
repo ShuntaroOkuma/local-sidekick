@@ -534,7 +534,7 @@ Camera State + PC State → Integrator → Final State
 | **ローカルDB**    | SQLite (aiosqlite)            | 標準ライブラリ |
 | **Cloud Run**     | Python + FastAPI              | 3.12           |
 | **DB**            | Firestore                     | -              |
-| **AI**            | Vertex AI (Gemini 2.0 Flash)  | -              |
+| **AI**            | Vertex AI (Gemini 2.5 Flash)  | -              |
 | **認証**          | Firebase Auth / JWT           | -              |
 | **配布**          | electron-builder              | latest         |
 
