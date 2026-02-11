@@ -17,7 +17,9 @@ export function Layout() {
   return (
     <div className="flex h-screen bg-gray-900">
       {/* Sidebar */}
-      <nav className="w-16 bg-gray-950 border-r border-gray-800 flex flex-col items-center py-4 gap-1">
+      <nav className="w-16 bg-gray-950 border-r border-gray-800 flex flex-col items-center gap-1">
+        {/* Titlebar drag area (traffic lights region) */}
+        <div className="titlebar-drag w-full h-12 shrink-0" />
         {/* App icon */}
         <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm mb-4">
           LS
@@ -45,11 +47,15 @@ export function Layout() {
       </nav>
 
       {/* Main content */}
-      <main className="flex-1 overflow-y-auto">
-        <div className="p-6 max-w-2xl mx-auto">
-          <Outlet />
-        </div>
-      </main>
+      <div className="flex-1 flex flex-col overflow-hidden">
+        {/* Draggable titlebar area */}
+        <div className="titlebar-drag h-8 shrink-0" />
+        <main className="flex-1 overflow-y-auto">
+          <div className="px-6 pb-6 max-w-2xl mx-auto">
+            <Outlet />
+          </div>
+        </main>
+      </div>
     </div>
   );
 }
