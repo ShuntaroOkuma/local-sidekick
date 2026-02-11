@@ -1,0 +1,469 @@
+/* ============================================================
+   Avatar Character Styles & Animations
+   A cute, round CSS character with expressive states.
+   ============================================================ */
+
+/* --- Root & Container --- */
+
+.avatar-root {
+  position: fixed;
+  bottom: 0;
+  right: 0;
+  width: 100vw;
+  height: 100vh;
+  pointer-events: none;
+  overflow: hidden;
+}
+
+.avatar-container {
+  position: absolute;
+  bottom: 20px;
+  right: 20px;
+  pointer-events: auto;
+  z-index: 100;
+}
+
+/* --- Character Body --- */
+
+.avatar-character {
+  position: relative;
+  display: inline-block;
+}
+
+.avatar-body {
+  position: relative;
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #4fd1c5 0%, #38b2ac 50%, #319795 100%);
+  box-shadow:
+    0 4px 12px rgba(56, 178, 172, 0.35),
+    0 1px 3px rgba(0, 0, 0, 0.1),
+    inset 0 -3px 6px rgba(0, 0, 0, 0.08),
+    inset 0 2px 4px rgba(255, 255, 255, 0.2);
+  overflow: visible;
+}
+
+/* --- Cheeks (blush spots) --- */
+
+.avatar-cheek {
+  position: absolute;
+  width: 12px;
+  height: 8px;
+  border-radius: 50%;
+  background: rgba(255, 150, 150, 0.35);
+  top: 36px;
+  z-index: 2;
+}
+
+.avatar-cheek.left {
+  left: 6px;
+}
+
+.avatar-cheek.right {
+  right: 6px;
+}
+
+/* --- Face --- */
+
+.avatar-face {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 40px;
+  height: 30px;
+}
+
+/* --- Eyes --- */
+
+.avatar-eyes {
+  display: flex;
+  justify-content: space-between;
+  padding: 0 4px;
+  margin-bottom: 6px;
+}
+
+.avatar-eye {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #1a202c;
+  position: relative;
+  transition: all 0.2s ease;
+}
+
+/* Eye shine highlight */
+.avatar-eye::after {
+  content: "";
+  position: absolute;
+  top: 1px;
+  right: 1px;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+}
+
+/* Closed eyes (dozing) - become lines */
+.avatar-eye.closed {
+  height: 2px;
+  border-radius: 2px;
+  margin-top: 3px;
+  background: #1a202c;
+}
+
+.avatar-eye.closed::after {
+  display: none;
+}
+
+/* Excited eyes (wake-up, stretch) - slightly larger */
+.avatar-eye.excited {
+  width: 10px;
+  height: 10px;
+}
+
+.avatar-eye.excited::after {
+  width: 4px;
+  height: 4px;
+}
+
+/* --- Mouth --- */
+
+.avatar-mouth {
+  width: 10px;
+  height: 5px;
+  margin: 0 auto;
+  border-radius: 0 0 10px 10px;
+  background: #1a202c;
+  transition: all 0.3s ease;
+}
+
+/* Wake-up: excited open smile */
+.avatar-mouth.wake-up {
+  width: 12px;
+  height: 7px;
+  border-radius: 0 0 12px 12px;
+  background: #e53e3e;
+}
+
+/* Peek: small curious "o" */
+.avatar-mouth.peek {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #1a202c;
+}
+
+/* Stretch: wide yawn */
+.avatar-mouth.stretch {
+  width: 14px;
+  height: 10px;
+  border-radius: 0 0 14px 14px;
+  background: #e53e3e;
+}
+
+/* Dozing: gentle closed smile */
+.avatar-mouth.dozing {
+  width: 10px;
+  height: 2px;
+  border-radius: 2px;
+  background: #1a202c;
+}
+
+/* Retreat: slight frown */
+.avatar-mouth.retreat {
+  width: 8px;
+  height: 3px;
+  border-radius: 2px;
+  background: #1a202c;
+}
+
+/* --- Arms (stretch mode) --- */
+
+.avatar-arm {
+  position: absolute;
+  width: 16px;
+  height: 6px;
+  background: linear-gradient(135deg, #4fd1c5, #38b2ac);
+  border-radius: 3px;
+  top: 18px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
+}
+
+.avatar-arm.left {
+  left: -14px;
+  transform-origin: right center;
+  animation: arm-stretch-left 2s ease-in-out infinite;
+}
+
+.avatar-arm.right {
+  right: -14px;
+  transform-origin: left center;
+  animation: arm-stretch-right 2s ease-in-out infinite;
+}
+
+@keyframes arm-stretch-left {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(-40deg);
+  }
+}
+
+@keyframes arm-stretch-right {
+  0%,
+  100% {
+    transform: rotate(0deg);
+  }
+  50% {
+    transform: rotate(40deg);
+  }
+}
+
+/* --- ZZZ Floating Letters (dozing) --- */
+
+.avatar-zzz {
+  position: absolute;
+  top: -10px;
+  right: -8px;
+  pointer-events: none;
+}
+
+.avatar-zzz .z {
+  position: absolute;
+  font-family: "Georgia", serif;
+  font-weight: bold;
+  color: rgba(74, 85, 104, 0.6);
+  animation: float-z 3s ease-in-out infinite;
+}
+
+.avatar-zzz .z1 {
+  font-size: 10px;
+  right: 0;
+  top: 0;
+  animation-delay: 0s;
+}
+
+.avatar-zzz .z2 {
+  font-size: 13px;
+  right: -6px;
+  top: -12px;
+  animation-delay: 0.5s;
+}
+
+.avatar-zzz .z3 {
+  font-size: 16px;
+  right: -10px;
+  top: -28px;
+  animation-delay: 1s;
+}
+
+@keyframes float-z {
+  0% {
+    opacity: 0;
+    transform: translateY(4px) scale(0.8);
+  }
+  20% {
+    opacity: 0.7;
+  }
+  80% {
+    opacity: 0.5;
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-12px) translateX(4px) scale(1.1);
+  }
+}
+
+/* ============================================================
+   Mode-Specific Animations
+   ============================================================ */
+
+/* --- Wake-up: Bounce in from below --- */
+
+.avatar-mode-wake-up {
+  animation: wake-up-entrance 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) forwards;
+}
+
+.avatar-mode-wake-up .avatar-body {
+  animation: wake-up-bounce 2s ease-in-out 0.6s infinite;
+}
+
+@keyframes wake-up-entrance {
+  0% {
+    opacity: 0;
+    transform: translateY(40px) scale(0.6);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes wake-up-bounce {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  25% {
+    transform: translateY(-8px);
+  }
+  50% {
+    transform: translateY(0);
+  }
+  75% {
+    transform: translateY(-4px);
+  }
+}
+
+/* --- Peek: Slide in from right edge --- */
+
+.avatar-mode-peek {
+  animation: peek-slide-in 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94) forwards;
+}
+
+.avatar-mode-peek .avatar-body {
+  animation: peek-sway 3s ease-in-out 0.5s infinite;
+}
+
+@keyframes peek-slide-in {
+  0% {
+    opacity: 0;
+    transform: translateX(60px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes peek-sway {
+  0%,
+  100% {
+    transform: translateX(0) rotate(0deg);
+  }
+  33% {
+    transform: translateX(-3px) rotate(-3deg);
+  }
+  66% {
+    transform: translateX(2px) rotate(2deg);
+  }
+}
+
+/* --- Stretch: Gentle scale with body expansion --- */
+
+.avatar-mode-stretch {
+  animation: stretch-entrance 0.4s ease-out forwards;
+}
+
+.avatar-mode-stretch .avatar-body {
+  animation: stretch-breathe 2.5s ease-in-out infinite;
+}
+
+@keyframes stretch-entrance {
+  0% {
+    opacity: 0;
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes stretch-breathe {
+  0%,
+  100% {
+    transform: scale(1) translateY(0);
+  }
+  30% {
+    transform: scale(1.08, 0.94) translateY(2px);
+  }
+  60% {
+    transform: scale(0.95, 1.06) translateY(-3px);
+  }
+}
+
+/* --- Dozing: Gentle breathing / rocking --- */
+
+.avatar-mode-dozing {
+  animation: dozing-entrance 0.8s ease-out forwards;
+}
+
+.avatar-mode-dozing .avatar-body {
+  animation: dozing-breathe 4s ease-in-out infinite;
+}
+
+@keyframes dozing-entrance {
+  0% {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes dozing-breathe {
+  0%,
+  100% {
+    transform: scale(1) rotate(0deg);
+  }
+  50% {
+    transform: scale(1.03, 0.97) rotate(2deg);
+  }
+}
+
+/* --- Retreat: Fade out + slide down --- */
+
+.avatar-mode-retreat {
+  animation: retreat-exit 1.5s ease-in forwards;
+}
+
+@keyframes retreat-exit {
+  0% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+  40% {
+    opacity: 0.8;
+    transform: translateY(-6px) scale(1.05);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(50px) scale(0.5);
+  }
+}
+
+/* --- Notification Toast --- */
+
+.avatar-notification {
+  position: absolute;
+  bottom: 90px;
+  right: 20px;
+  background: rgba(26, 32, 44, 0.9);
+  color: #e2e8f0;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  max-width: 200px;
+  pointer-events: none;
+  animation: notification-pop 0.3s ease-out forwards;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+}
+
+@keyframes notification-pop {
+  0% {
+    opacity: 0;
+    transform: translateY(8px) scale(0.95);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}

@@ -1,9 +1,3 @@
-/**
- * Minimal avatar state machine for Engine integration.
- * The canonical version lives in avatar-dev's branch;
- * this duplicate will be resolved when both PRs merge into feat/avatar-poc.
- */
-
 export type AvatarMode =
   | "hidden"
   | "wake-up"
@@ -12,39 +6,72 @@ export type AvatarMode =
   | "dozing"
   | "retreat";
 
-type EngineUserState = "focused" | "drowsy" | "distracted" | "away" | "idle";
+export type EngineUserState =
+  | "focused"
+  | "drowsy"
+  | "distracted"
+  | "away"
+  | "idle";
 
-const STATE_MAP: Record<EngineUserState, AvatarMode> = {
-  focused: "hidden",
-  drowsy: "wake-up",
-  distracted: "peek",
-  away: "dozing",
-  idle: "dozing",
-};
-
-export function engineStateToAvatarMode(state: EngineUserState): AvatarMode {
-  return STATE_MAP[state] ?? "dozing";
+/** Map engine states to avatar animation modes */
+export function engineStateToAvatarMode(
+  engineState: EngineUserState,
+): AvatarMode {
+  switch (engineState) {
+    case "focused":
+      return "hidden";
+    case "drowsy":
+      return "wake-up";
+    case "distracted":
+      return "peek";
+    case "away":
+    case "idle":
+      return "dozing";
+    default:
+      return "hidden";
+  }
 }
 
 /**
- * Simple debouncer to avoid rapid avatar-mode flicker.
- * Calls `setter` only after the new mode has been stable for `delayMs`.
+ * Debounce state changes to prevent rapid flickering between modes.
+ * Hiding transitions play a retreat animation first.
  */
-export function createStateDebouncer(delayMs: number) {
-  let timer: ReturnType<typeof setTimeout> | null = null;
+export function createStateDebouncer(delayMs: number = 1000) {
+  let timeoutId: ReturnType<typeof setTimeout> | null = null;
+  let currentMode: AvatarMode = "hidden";
 
   return {
-    update(newMode: AvatarMode, setter: (m: AvatarMode) => void) {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => {
-        setter(newMode);
-        timer = null;
+    update(newMode: AvatarMode, callback: (mode: AvatarMode) => void): void {
+      if (newMode === currentMode) return;
+
+      if (timeoutId) clearTimeout(timeoutId);
+
+      // When returning to hidden, play retreat first then hide
+      if (newMode === "hidden") {
+        currentMode = "retreat";
+        callback("retreat");
+        timeoutId = setTimeout(() => {
+          currentMode = "hidden";
+          callback("hidden");
+        }, 1500);
+        return;
+      }
+
+      // Debounce showing transitions to avoid flicker
+      timeoutId = setTimeout(() => {
+        currentMode = newMode;
+        callback(newMode);
       }, delayMs);
     },
-    cancel() {
-      if (timer) {
-        clearTimeout(timer);
-        timer = null;
+
+    getCurrentMode(): AvatarMode {
+      return currentMode;
+    },
+
+    cancel(): void {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
       }
     },
   };
