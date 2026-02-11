@@ -42,11 +42,10 @@ function createWindow(): BrowserWindow {
 function startStatePolling(): void {
   if (statePollingInterval) return;
 
-  statePollingInterval = setInterval(async () => {
-    if (!pythonBridge?.isRunning()) return;
+  const port = pythonBridge?.getPort() ?? 18080;
 
+  statePollingInterval = setInterval(async () => {
     try {
-      const port = pythonBridge.getPort();
       const res = await fetch(`http://localhost:${port}/api/state`);
       if (!res.ok) return;
 
@@ -125,11 +124,13 @@ app.whenReady().then(async () => {
   try {
     await pythonBridge.spawn();
     console.log("Python Engine started successfully");
-    startStatePolling();
   } catch (err) {
     console.error("Failed to start Python Engine:", err);
-    // App still works without engine - shows disconnected state
+    console.log("Will poll for an externally started Engine on port 18080");
   }
+
+  // Always start polling (works with both spawned and external Engine)
+  startStatePolling();
 });
 
 app.on("window-all-closed", () => {
