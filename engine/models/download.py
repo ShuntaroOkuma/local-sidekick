@@ -4,8 +4,9 @@ Downloads required GGUF and MediaPipe models.
 Based on poc/download_models.py, simplified for MVP.
 
 Usage:
-    python -m engine.models.download                  # Download all models
-    python -m engine.models.download --text-only      # Download text models only
+    python -m engine.models.download                  # Download 3B model + MediaPipe
+    python -m engine.models.download --text-only      # Download 3B model only
+    python -m engine.models.download --all            # Download all models (including 7B)
     python -m engine.models.download --check          # Check which models are available
 """
 
@@ -14,9 +15,8 @@ from __future__ import annotations
 import argparse
 import sys
 import urllib.request
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Optional
 
 MODELS_DIR = Path(__file__).parent
 
@@ -32,22 +32,30 @@ class GGUFModel:
     filename: str
     description: str
     size_gb: float
+    # For sharded models, list all filenames to download.
+    # The first file is used by llama-cpp-python to load the full model.
+    shard_filenames: tuple[str, ...] = ()
 
 
-TEXT_GGUF_MODELS = (
-    GGUFModel(
-        name="qwen2.5-7b-instruct-q4km",
-        repo_id="Qwen/Qwen2.5-7B-Instruct-GGUF",
-        filename="qwen2.5-7b-instruct-q4_k_m.gguf",
-        description="Recommended for text mode - better threshold reasoning",
-        size_gb=4.7,
-    ),
-    GGUFModel(
-        name="qwen2.5-3b-instruct-q4km",
-        repo_id="Qwen/Qwen2.5-3B-Instruct-GGUF",
-        filename="qwen2.5-3b-instruct-q4_k_m.gguf",
-        description="Qwen2.5-3B-Instruct GGUF Q4_K_M (text, llama.cpp)",
-        size_gb=2.0,
+# Default model (lightweight, single file)
+TEXT_MODEL_3B = GGUFModel(
+    name="qwen2.5-3b-instruct-q4km",
+    repo_id="Qwen/Qwen2.5-3B-Instruct-GGUF",
+    filename="qwen2.5-3b-instruct-q4_k_m.gguf",
+    description="Lightweight text model (default)",
+    size_gb=2.0,
+)
+
+# Optional larger model (sharded into 2 files)
+TEXT_MODEL_7B = GGUFModel(
+    name="qwen2.5-7b-instruct-q4km",
+    repo_id="Qwen/Qwen2.5-7B-Instruct-GGUF",
+    filename="qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf",
+    description="Recommended for text mode - better reasoning (optional, --all)",
+    size_gb=4.7,
+    shard_filenames=(
+        "qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf",
+        "qwen2.5-7b-instruct-q4_k_m-00002-of-00002.gguf",
     ),
 )
 
@@ -60,7 +68,7 @@ _FACE_LANDMARKER_FILENAME = "face_landmarker.task"
 
 
 def download_gguf_model(model: GGUFModel) -> Path:
-    """Download a single GGUF model file."""
+    """Download a single GGUF model (or all shards for sharded models)."""
     try:
         from huggingface_hub import hf_hub_download
     except ImportError:
@@ -74,14 +82,18 @@ def download_gguf_model(model: GGUFModel) -> Path:
         print(f"  [skip] {model.name}: already exists at {target_path}")
         return target_path
 
-    print(f"  [download] {model.name} (~{model.size_gb}GB): {model.description}")
-    downloaded_path = hf_hub_download(
-        repo_id=model.repo_id,
-        filename=model.filename,
-        local_dir=str(MODELS_DIR),
-    )
-    print(f"  [done] Saved to {downloaded_path}")
-    return Path(downloaded_path)
+    filenames = model.shard_filenames if model.shard_filenames else (model.filename,)
+    print(f"  [download] {model.name} (~{model.size_gb}GB, {len(filenames)} file(s)): {model.description}")
+
+    for fname in filenames:
+        hf_hub_download(
+            repo_id=model.repo_id,
+            filename=fname,
+            local_dir=str(MODELS_DIR),
+        )
+
+    print(f"  [done] Saved to {target_path}")
+    return target_path
 
 
 def download_face_landmarker() -> Path:
@@ -106,10 +118,8 @@ def check_models() -> None:
 
     fl_path = MODELS_DIR / _FACE_LANDMARKER_FILENAME
     all_models.append(("face_landmarker", "MediaPipe FaceLandmarker float16 (camera)", fl_path, 0.004))
-
-    for m in TEXT_GGUF_MODELS:
-        path = MODELS_DIR / m.filename
-        all_models.append((m.name, m.description, path, m.size_gb))
+    all_models.append((TEXT_MODEL_3B.name, TEXT_MODEL_3B.description, MODELS_DIR / TEXT_MODEL_3B.filename, TEXT_MODEL_3B.size_gb))
+    all_models.append((TEXT_MODEL_7B.name, TEXT_MODEL_7B.description, MODELS_DIR / TEXT_MODEL_7B.filename, TEXT_MODEL_7B.size_gb))
 
     total_size = 0.0
     downloaded_size = 0.0
@@ -129,26 +139,34 @@ def check_models() -> None:
     print()
 
 
-def download_all(text_only: bool = False) -> None:
-    """Download required models."""
+def download_models(*, text_only: bool = False, include_7b: bool = False) -> None:
+    """Download models."""
     print("\n=== Downloading Models ===\n")
 
     errors: list[str] = []
 
-    print("MediaPipe models:")
-    try:
-        download_face_landmarker()
-    except Exception as e:
-        print(f"  [ERROR] face_landmarker: {e}")
-        errors.append("face_landmarker")
-
-    print("\nText models (GGUF):")
-    for model in TEXT_GGUF_MODELS:
+    if not text_only:
+        print("MediaPipe models:")
         try:
-            download_gguf_model(model)
+            download_face_landmarker()
         except Exception as e:
-            print(f"  [ERROR] {model.name}: {e}")
-            errors.append(model.name)
+            print(f"  [ERROR] face_landmarker: {e}")
+            errors.append("face_landmarker")
+        print()
+
+    print("Text models (GGUF):")
+    try:
+        download_gguf_model(TEXT_MODEL_3B)
+    except Exception as e:
+        print(f"  [ERROR] {TEXT_MODEL_3B.name}: {e}")
+        errors.append(TEXT_MODEL_3B.name)
+
+    if include_7b:
+        try:
+            download_gguf_model(TEXT_MODEL_7B)
+        except Exception as e:
+            print(f"  [ERROR] {TEXT_MODEL_7B.name}: {e}")
+            errors.append(TEXT_MODEL_7B.name)
 
     if errors:
         print(f"\nCompleted with {len(errors)} error(s): {', '.join(errors)}")
@@ -162,7 +180,12 @@ def main() -> None:
     parser.add_argument(
         "--text-only",
         action="store_true",
-        help="Download text models only (skip vision models)",
+        help="Download text models only (skip MediaPipe)",
+    )
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="Download all models including 7B (large, ~4.7GB extra)",
     )
     parser.add_argument(
         "--check",
@@ -174,7 +197,7 @@ def main() -> None:
     if args.check:
         check_models()
     else:
-        download_all(text_only=args.text_only)
+        download_models(text_only=args.text_only, include_7b=args.all)
 
 
 if __name__ == "__main__":
