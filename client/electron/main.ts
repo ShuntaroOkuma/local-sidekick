@@ -7,7 +7,7 @@ import type { NotificationType } from "./notification";
 
 let mainWindow: BrowserWindow | null = null;
 let pythonBridge: PythonBridge | null = null;
-let statePollingInterval: ReturnType<typeof setInterval> | null = null;
+let statePollingTimeout: ReturnType<typeof setTimeout> | null = null;
 
 function createWindow(): BrowserWindow {
   const win = new BrowserWindow({
@@ -40,57 +40,62 @@ function createWindow(): BrowserWindow {
 }
 
 function startStatePolling(): void {
-  if (statePollingInterval) return;
+  if (statePollingTimeout) return;
 
   const port = pythonBridge?.getPort() ?? 18080;
 
-  statePollingInterval = setInterval(async () => {
+  async function poll(): Promise<void> {
     try {
       const res = await fetch(`http://localhost:${port}/api/state`);
-      if (!res.ok) return;
+      if (res.ok) {
+        const state = await res.json();
 
-      const state = await res.json();
+        // Update tray icon based on state
+        updateTrayIcon(state.state);
 
-      // Update tray icon based on state
-      updateTrayIcon(state.state);
-
-      // Check for notifications
-      const notifRes = await fetch(
-        `http://localhost:${port}/api/notifications/pending`
-      );
-      if (notifRes.ok) {
-        const notifications = await notifRes.json();
-        for (const notif of notifications) {
-          showNotification(
-            notif.type as NotificationType,
-            (action: string) => {
-              mainWindow?.webContents.send("notification-response", {
-                type: notif.type,
-                action,
-              });
-              // Report back to engine
-              fetch(
-                `http://localhost:${port}/api/notifications/${notif.id}/respond`,
-                {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ action }),
-                }
-              ).catch(() => {});
-            }
-          );
+        // Check for notifications
+        const notifRes = await fetch(
+          `http://localhost:${port}/api/notifications/pending`
+        );
+        if (notifRes.ok) {
+          const notifications = await notifRes.json();
+          for (const notif of notifications) {
+            showNotification(
+              notif.type as NotificationType,
+              (action: string) => {
+                mainWindow?.webContents.send("notification-response", {
+                  type: notif.type,
+                  action,
+                });
+                // Report back to engine
+                fetch(
+                  `http://localhost:${port}/api/notifications/${notif.id}/respond`,
+                  {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ action }),
+                  }
+                ).catch(() => {});
+              }
+            );
+          }
         }
       }
     } catch {
       // Engine not ready yet
     }
-  }, 5000);
+    // Schedule next poll only after current one completes
+    statePollingTimeout = setTimeout(poll, 5000);
+  }
+
+  // Start first poll
+  statePollingTimeout = setTimeout(poll, 5000);
 }
 
 function stopStatePolling(): void {
-  if (statePollingInterval) {
-    clearInterval(statePollingInterval);
-    statePollingInterval = null;
+  if (statePollingTimeout) {
+    clearTimeout(statePollingTimeout);
+    statePollingTimeout = null;
   }
 }
 

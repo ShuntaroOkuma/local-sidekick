@@ -63,24 +63,33 @@ _llm_lock = asyncio.Lock()  # Lock for thread-safe LLM access
 
 
 async def _get_shared_llm(config: EngineConfig):
-    """Get or create the shared LLM backend (lazy-loaded, singleton)."""
+    """Get or create the shared LLM backend (lazy-loaded, singleton).
+
+    Uses _llm_lock to prevent concurrent initialization which could
+    load the model (2-5GB) into memory twice.
+    """
     global _shared_llm_backend
 
     if _shared_llm_backend is not None:
         return _shared_llm_backend
 
-    try:
-        from engine.estimation.llm_backend import LLMBackend
-        backend = LLMBackend(
-            model_tier=config.model_tier,
-            n_ctx=config.llm_n_ctx,
-        )
-        await asyncio.to_thread(backend.load)
-        _shared_llm_backend = backend
-        return _shared_llm_backend
-    except Exception as e:
-        logger.warning("Failed to load shared LLM backend: %s", e)
-        return None
+    async with _llm_lock:
+        # Double-check after acquiring lock
+        if _shared_llm_backend is not None:
+            return _shared_llm_backend
+
+        try:
+            from engine.estimation.llm_backend import LLMBackend
+            backend = LLMBackend(
+                model_tier=config.model_tier,
+                n_ctx=config.llm_n_ctx,
+            )
+            await asyncio.to_thread(backend.load)
+            _shared_llm_backend = backend
+            return _shared_llm_backend
+        except Exception as e:
+            logger.warning("Failed to load shared LLM backend: %s", e)
+            return None
 
 
 def _create_notification_engine(config: EngineConfig) -> NotificationEngine:
@@ -100,15 +109,16 @@ def _create_notification_engine(config: EngineConfig) -> NotificationEngine:
 # --- Camera monitoring ---
 
 
-async def _camera_loop(config: EngineConfig) -> None:
+async def _camera_loop() -> None:
     """Background task: camera capture + feature extraction + classification.
 
     Runs at ~5fps (200ms interval) for frame capture, with state
     classification every estimation_interval seconds.
+    Reads from global _config so settings changes take effect dynamically.
     """
     global _latest_camera_state
 
-    if not config.camera_enabled:
+    if not _config.camera_enabled:
         logger.info("Camera disabled in config, skipping camera loop.")
         return
 
@@ -120,7 +130,7 @@ async def _camera_loop(config: EngineConfig) -> None:
         return
 
     try:
-        camera = CameraCapture(camera_index=config.camera_index)
+        camera = CameraCapture(camera_index=_config.camera_index)
         camera.open()
     except RuntimeError as e:
         logger.error("Failed to open camera: %s", e)
@@ -144,7 +154,7 @@ async def _camera_loop(config: EngineConfig) -> None:
             snapshot = tracker.update(frame_features)
 
             now = time.monotonic()
-            if now - last_estimation >= config.estimation_interval:
+            if now - last_estimation >= _config.estimation_interval:
                 last_estimation = now
                 snapshot_dict = snapshot.to_dict()
 
@@ -154,7 +164,7 @@ async def _camera_loop(config: EngineConfig) -> None:
                     _latest_camera_state = rule_result
                 else:
                     # LLM fallback using shared instance
-                    llm = await _get_shared_llm(config)
+                    llm = await _get_shared_llm(_config)
                     if llm is None:
                         _latest_camera_state = ClassificationResult(
                             state="focused",
@@ -188,7 +198,7 @@ async def _camera_loop(config: EngineConfig) -> None:
                     except Exception as e:
                         logger.error("LLM inference failed: %s", e)
 
-            await asyncio.sleep(config.camera_frame_interval)
+            await asyncio.sleep(_config.camera_frame_interval)
     finally:
         camera.close()
 
@@ -196,10 +206,11 @@ async def _camera_loop(config: EngineConfig) -> None:
 # --- PC monitoring ---
 
 
-async def _pc_monitor_loop(config: EngineConfig) -> None:
+async def _pc_monitor_loop() -> None:
     """Background task: PC usage monitoring + classification.
 
     PC monitor runs continuously; snapshots taken at pc_estimation_interval.
+    Reads from global _config so settings changes take effect dynamically.
     """
     global _latest_pc_state
 
@@ -217,9 +228,16 @@ async def _pc_monitor_loop(config: EngineConfig) -> None:
     try:
         while _should_monitor:
             now = time.monotonic()
-            if now - last_estimation >= config.pc_estimation_interval:
+            if now - last_estimation >= _config.pc_estimation_interval:
                 last_estimation = now
-                snapshot = monitor.take_snapshot()
+
+                try:
+                    snapshot = monitor.take_snapshot()
+                except Exception as e:
+                    logger.warning("PC snapshot failed: %s", e)
+                    await asyncio.sleep(_config.pc_poll_interval)
+                    continue
+
                 snapshot_dict = snapshot.to_dict()
 
                 # Try rule-based classification first
@@ -228,7 +246,7 @@ async def _pc_monitor_loop(config: EngineConfig) -> None:
                     _latest_pc_state = rule_result
                 else:
                     # LLM fallback using shared instance
-                    llm = await _get_shared_llm(config)
+                    llm = await _get_shared_llm(_config)
                     if llm is None:
                         _latest_pc_state = ClassificationResult(
                             state="focused",
@@ -262,7 +280,7 @@ async def _pc_monitor_loop(config: EngineConfig) -> None:
                     except Exception as e:
                         logger.error("LLM inference failed for PC: %s", e)
 
-            await asyncio.sleep(config.pc_poll_interval)
+            await asyncio.sleep(_config.pc_poll_interval)
     finally:
         monitor.stop()
 
@@ -270,11 +288,14 @@ async def _pc_monitor_loop(config: EngineConfig) -> None:
 # --- Integration + notification + history loop ---
 
 
-async def _integration_loop(config: EngineConfig) -> None:
-    """Background task: integrate states, check notifications, record history."""
+async def _integration_loop() -> None:
+    """Background task: integrate states, check notifications, record history.
+
+    Reads from global _config so settings changes take effect dynamically.
+    """
     global _notification_engine
 
-    _notification_engine = _create_notification_engine(config)
+    _notification_engine = _create_notification_engine(_config)
 
     while _should_monitor:
         camera_state = _latest_camera_state
@@ -314,7 +335,7 @@ async def _integration_loop(config: EngineConfig) -> None:
         notification = _notification_engine.evaluate(
             state=integrated.state,
             timestamp=integrated.timestamp,
-            interval_seconds=config.integration_interval,
+            interval_seconds=_config.integration_interval,
         )
 
         if notification is not None:
@@ -329,10 +350,21 @@ async def _integration_loop(config: EngineConfig) -> None:
                 timestamp=notification.timestamp,
             )
 
-        await asyncio.sleep(config.integration_interval)
+        await asyncio.sleep(_config.integration_interval)
 
 
 # --- Start/Stop callbacks ---
+
+
+async def apply_config(new_config: EngineConfig) -> None:
+    """Apply a new config to the running engine (called from settings API)."""
+    global _config, _notification_engine
+
+    _config = new_config
+    # Recreate notification engine with updated settings
+    if _notification_engine is not None:
+        _notification_engine = _create_notification_engine(_config)
+    logger.info("Applied updated config to running engine.")
 
 
 async def start_monitoring() -> None:
@@ -353,9 +385,9 @@ async def start_monitoring() -> None:
     logger.info("Starting monitoring tasks...")
 
     tasks = [
-        asyncio.create_task(_camera_loop(_config), name="camera_loop"),
-        asyncio.create_task(_pc_monitor_loop(_config), name="pc_monitor_loop"),
-        asyncio.create_task(_integration_loop(_config), name="integration_loop"),
+        asyncio.create_task(_camera_loop(), name="camera_loop"),
+        asyncio.create_task(_pc_monitor_loop(), name="pc_monitor_loop"),
+        asyncio.create_task(_integration_loop(), name="integration_loop"),
     ]
     _monitoring_tasks.extend(tasks)
 
@@ -401,6 +433,7 @@ async def lifespan(app: FastAPI):
     set_engine_state("history_store", _history_store)
     set_engine_state("start_callback", start_monitoring)
     set_engine_state("stop_callback", stop_monitoring)
+    set_engine_state("apply_config_callback", apply_config)
 
     # Auto-start monitoring on launch
     await start_monitoring()

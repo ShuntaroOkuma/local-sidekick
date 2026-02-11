@@ -14,12 +14,14 @@ Endpoints:
 from __future__ import annotations
 
 import datetime
+import time
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
 from engine.config import EngineConfig, load_config, save_config
+from engine.history.aggregator import compute_daily_stats
 
 router = APIRouter(prefix="/api")
 
@@ -109,8 +111,6 @@ def get_engine_state(key: str) -> object:
 @router.get("/health", response_model=HealthResponse)
 async def health() -> HealthResponse:
     """Health check endpoint."""
-    import time
-
     monitoring = _engine_state.get("monitoring", False)
     start_time = _engine_state.get("start_time")
     uptime = time.time() - start_time if start_time else 0.0
@@ -182,8 +182,6 @@ async def get_daily_stats(
         return summary
 
     # Compute from state_log
-    from engine.history.aggregator import compute_daily_stats
-
     stats = await compute_daily_stats(store, date)
     return stats
 
@@ -212,7 +210,11 @@ async def get_settings() -> SettingsResponse:
 
 @router.put("/settings", response_model=SettingsResponse)
 async def update_settings(update: SettingsUpdate) -> SettingsResponse:
-    """Update engine settings. Only provided fields are updated."""
+    """Update engine settings. Only provided fields are updated.
+
+    Changes are saved to disk AND applied to the running engine
+    via the global _config and notification engine refresh.
+    """
     config = load_config()
 
     update_data = update.model_dump(exclude_none=True)
@@ -221,6 +223,11 @@ async def update_settings(update: SettingsUpdate) -> SettingsResponse:
             setattr(config, key, value)
 
     save_config(config)
+
+    # Apply to running engine loops (they read from global _config)
+    apply_callback = _engine_state.get("apply_config_callback")
+    if apply_callback is not None:
+        await apply_callback(config)
 
     return SettingsResponse(
         working_hours_start=config.working_hours_start,
@@ -263,9 +270,7 @@ async def get_pending_notifications() -> list:
     if store is None:
         return []
     # Get recent notifications (last 5 minutes) without user_action
-    import time as _time
-
-    start = _time.time() - 300
+    start = time.time() - 300
     all_notifs = await store.get_notifications(start_time=start)
     return [n for n in all_notifs if not n.get("user_action")]
 
@@ -299,8 +304,6 @@ async def generate_report(
 
     if date is None:
         date = datetime.date.today().isoformat()
-
-    from engine.history.aggregator import compute_daily_stats
 
     stats = await compute_daily_stats(store, date)
 
