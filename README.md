@@ -1,180 +1,153 @@
-# Local Sidekick PoC
+# Local Sidekick
 
-Proof of Concept for Local Sidekick -- an always-on macOS observer that detects drowsiness, focus, and distraction using on-device camera analysis and PC usage monitoring with local LLMs.
+An always-on macOS observer that detects drowsiness, focus, and distraction using on-device camera analysis and PC usage monitoring -- then nudges you back on track with timely notifications and a daily AI-generated report.
 
-## Overview
+## Architecture
 
-This PoC validates three core technical hypotheses:
+```
+macOS Electron App
+  ├── Main Process (Tray, Notifications, Python Bridge)
+  ├── Renderer (React: Dashboard, Timeline, Report, Settings)
+  └── Python Engine (FastAPI @ localhost:18080)
+        ├── Camera Pipeline (MediaPipe face landmarks)
+        ├── PC Usage Monitor (pynput + pyobjc)
+        ├── Rule Classifier (95%) + LLM Fallback (5%)
+        ├── State Integrator (camera + PC → final state)
+        ├── Notification Engine (drowsy / distracted / over-focus)
+        └── History Store (SQLite)
 
-1. **Experiment 1 (Embedded LLM)**: Camera face features extracted via MediaPipe can be classified by on-device LLMs (llama.cpp / MLX) into focused/drowsy/distracted states
-2. **Experiment 2 (LM Studio)**: The same classification works via LM Studio's OpenAI-compatible API as an alternative backend
-3. **Experiment 3 (PC Usage)**: OS-level metadata (active app, keyboard/mouse activity, idle time) can be analyzed by LLMs to detect focused/distracted/idle states
-
-**Target environment**: Python / Apple Silicon M3-M4 (16-36GB RAM) / macOS
+Google Cloud
+  ├── Cloud Run API (FastAPI, JWT auth)
+  ├── Vertex AI Gemini 2.0 Flash (daily report generation)
+  └── Firestore (user settings, stats, reports)
+```
 
 ## Directory Structure
 
 ```
-poc/
-  pyproject.toml              # Dependencies (grouped by experiment)
-  download_models.py          # Model download helper (Qwen2.5/Qwen2-VL)
-
-  shared/
-    __init__.py
-    camera.py                 # Webcam + MediaPipe FaceMesh pipeline
-    features.py               # Feature extraction (EAR, PERCLOS, head pose, blink, yawn)
-    metrics.py                # Performance measurement (FPS, latency, CPU/RAM)
-    prompts.py                # LLM prompt templates
-
-  experiment1_embedded/       # Experiment 1: Embedded LLM
-    __init__.py
-    run_text_llama_cpp.py     # Features JSON -> llama-cpp-python
-    run_text_mlx.py           # Features JSON -> mlx-lm
-    run_vision_llama_cpp.py   # Camera frame -> llama-cpp-python (vision)
-    run_vision_mlx.py         # Camera frame -> mlx-vlm (vision)
-
-  experiment2_lmstudio/       # Experiment 2: LM Studio
-    __init__.py
-    run_text_lmstudio.py      # Features JSON -> LM Studio API
-    run_vision_lmstudio.py    # Camera frame -> LM Studio Vision API
-
-  experiment3_pcusage/        # Experiment 3: PC usage monitoring
-    __init__.py
-    monitor.py                # Data collection (app name, keyboard, mouse, idle)
-    run_analysis.py           # Collected data -> LLM analysis
+local-sidekick/
+├── client/                   # Electron + React app
+│   ├── electron/             # Main process (tray, preload, python-bridge, notification)
+│   ├── src/                  # React renderer
+│   │   ├── pages/            # Dashboard, Timeline, Report, Settings
+│   │   ├── components/       # StateIndicator, TimelineChart, etc.
+│   │   ├── hooks/            # useEngineState, useSettings
+│   │   └── lib/              # api client, types
+│   └── package.json
+├── engine/                   # Python local backend
+│   ├── engine/
+│   │   ├── api/              # REST routes + WebSocket
+│   │   ├── camera/           # capture + feature extraction
+│   │   ├── estimation/       # rule_classifier, llm_backend, integrator
+│   │   ├── pcusage/          # OS-level activity monitor
+│   │   ├── notification/     # trigger logic (3 notification types)
+│   │   ├── history/          # SQLite store + daily aggregator
+│   │   ├── main.py           # FastAPI entry point
+│   │   └── config.py         # centralized config
+│   └── pyproject.toml
+├── server/                   # Cloud Run API
+│   ├── server/
+│   │   ├── api/              # settings, statistics, reports
+│   │   ├── services/         # vertex_ai, firestore_client
+│   │   ├── models/           # Pydantic schemas
+│   │   ├── auth.py           # JWT authentication
+│   │   ├── deps.py           # shared Firestore singleton
+│   │   └── main.py           # FastAPI entry point
+│   ├── Dockerfile
+│   └── pyproject.toml
+├── poc/                      # Proof of Concept (reference, not modified)
+├── docs/
+│   ├── architecture.md       # Detailed MVP design
+│   ├── requirements.md       # Product requirements
+│   ├── manual-testing.md     # Verification procedures
+│   └── poc-plan.md           # PoC experiment plan
+└── README.md
 ```
 
-## Setup
+## Quick Start
 
 ### Prerequisites
 
 - macOS with Apple Silicon (M3/M4, 16GB+ RAM)
-- Python 3.11+
-- LM Studio installed (for Experiment 2)
+- Python 3.12+
+- Node.js 20+
 
-### Installation
-
-```bash
-cd poc/
-
-# Create virtual environment
-python3 -m venv .venv
-source .venv/bin/activate
-
-# Install all dependencies
-pip install -e ".[all]"
-
-# Download models (~7-8GB total)
-python download_models.py
-```
-
-### Models
-
-| Model | Format | Size | Purpose |
-|-------|--------|------|---------|
-| Qwen2.5-3B-Instruct | GGUF Q4_K_M | ~2.0GB | Text LLM (llama.cpp) |
-| Qwen2.5-3B-Instruct-4bit | MLX | ~1.8GB | Text LLM (MLX) |
-| Qwen2-VL-2B-Instruct | GGUF Q4_K_M | ~1.5GB | Vision LLM (llama.cpp) |
-| Qwen2-VL-2B-Instruct-4bit | MLX | ~1.5GB | Vision LLM (MLX) |
-
-### macOS Permissions
-
-- **Camera**: Required for all camera experiments
-- **Input Monitoring** (System Settings > Privacy & Security > Input Monitoring): Required for Experiment 3 (pynput keyboard/mouse event counting)
-
-## Running Experiments
-
-### Shared module verification
+### 1. Engine
 
 ```bash
-# Verify camera + FaceMesh pipeline (shows video for 10 seconds)
-python -m shared.camera --show-video --duration 10
+cd engine
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e .
 
-# Verify PC usage monitor (collects data for 30 seconds)
-python -m experiment3_pcusage.monitor --duration 30
+# (Optional) Download models for camera + LLM
+python models/download.py
+
+python -m engine.main
+# → http://localhost:18080
 ```
 
-### Experiment 1: Embedded LLM
+### 2. Client
 
 ```bash
-# Text mode: features JSON -> LLM
-python -m experiment1_embedded.run_text_llama_cpp --duration 60 --interval 5
-python -m experiment1_embedded.run_text_mlx --duration 60 --interval 5
-
-# Vision mode: camera frame -> LLM (slower, longer intervals)
-python -m experiment1_embedded.run_vision_llama_cpp --duration 120 --interval 15
-python -m experiment1_embedded.run_vision_mlx --duration 120 --interval 15
+cd client
+npm install
+npm run dev
+# → Electron app launches with tray icon
 ```
 
-### Experiment 2: LM Studio
-
-**Prerequisite**: Load a compatible model in LM Studio first.
+### 3. Server (optional, for cloud sync)
 
 ```bash
-# Text mode
-python -m experiment2_lmstudio.run_text_lmstudio --duration 60 --interval 5
+cd server
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e .
 
-# Vision mode
-python -m experiment2_lmstudio.run_vision_lmstudio --duration 120 --interval 15
+USE_MEMORY_STORE=true JWT_SECRET=dev-secret uvicorn server.main:app --port 8081
+# → http://localhost:8081
 ```
 
-### Experiment 3: PC Usage Monitoring
+## Key Features
 
-```bash
-python -m experiment3_pcusage.run_analysis --backend lmstudio --duration 300 --interval 30
-```
+| Feature | Description |
+|---------|-------------|
+| Real-time state estimation | Camera (face landmarks) + PC usage → focused / drowsy / distracted / away / idle |
+| 3 notification types | Drowsy (120s), Distracted (120s), Over-focus (80min in 90min window) |
+| Dashboard | Live state display, confidence bar, today's summary |
+| Timeline | Color-coded hourly state visualization |
+| Daily Report | AI-generated summary via Vertex AI (Gemini 2.0 Flash) |
+| Settings sync | Cloud Run API with JWT auth + Firestore |
+| Privacy-first | All video processed on-device, only statistics sent to cloud |
 
-Backend options: `lmstudio`, `llama_cpp`, `mlx`
+## Tech Stack
 
-## Success Criteria
+| Layer | Technology |
+|-------|-----------|
+| Desktop | Electron 34 + React 19 + TypeScript |
+| Build | electron-vite + Vite 6 + TailwindCSS 4 |
+| Engine | Python 3.12 + FastAPI + aiosqlite |
+| Camera | OpenCV + MediaPipe Face Landmarks |
+| On-device LLM | llama-cpp-python + Qwen2.5-3B (Q4_K_M, Metal) |
+| PC Monitor | pynput + pyobjc |
+| Cloud API | Cloud Run + FastAPI |
+| AI | Vertex AI (Gemini 2.0 Flash) |
+| Database | Firestore (cloud) + SQLite (local) |
+| Auth | JWT (python-jose + passlib) |
 
-### Experiment 1 - Embedded LLM
+## Privacy
 
-| Metric | Text Mode Target | Vision Mode Target |
-|--------|-----------------|-------------------|
-| Camera FPS (incl. feature extraction) | >= 25 FPS | >= 25 FPS |
-| LLM Latency | < 2s | < 10s |
-| Memory Usage | < 4GB | < 6GB |
-| CPU Usage (sustained) | < 50% | < 70% |
-| Classification Quality | >= 70% correct for obvious states | Same |
+- No video leaves the device (default)
+- No keystroke content recorded (only event counts)
+- No screen capture
+- Server receives only aggregated statistics
+- Camera can be disabled in settings
 
-### Experiment 2 - LM Studio
+## Documentation
 
-| Metric | Target |
-|--------|--------|
-| LLM Latency (text) | < 3s |
-| LLM Latency (vision) | < 15s |
-| Quality vs. embedded | Comparable |
-| Integration simplicity | Simpler than embedded |
+- [Product Requirements](docs/requirements.md)
+- [Architecture & Design](docs/architecture.md)
+- [Manual Testing Guide](docs/manual-testing.md)
+- [PoC Experiment Plan](docs/poc-plan.md)
 
-### Experiment 3 - PC Usage
+## License
 
-| Metric | Target |
-|--------|--------|
-| Collection overhead | < 1% CPU |
-| Permission detection | Detects and guides required permissions |
-| State classification | Correctly distinguishes idle/distracted/focused |
-
-### Overall PoC Success
-
-1. At least one of text or vision mode achieves practical latency + quality
-2. LM Studio integration works as an alternative to embedded
-3. PC usage monitoring runs stably for 5+ minutes
-4. Memory stays under 6GB, allowing coexistence with normal work
-
-## Risks and Mitigations
-
-| Risk | Mitigation |
-|------|-----------|
-| MediaPipe not supported on macOS ARM | Fall back to `mediapipe-silicon` fork or Apple Vision Framework (PyObjC) |
-| llama-cpp-python Metal compilation failure | Use pre-built wheel or CPU-only execution |
-| Vision model too slow for practical use | Document text-features approach as recommended; limit vision to periodic deep analysis |
-| pynput broken on macOS Sequoia | Detect permissions at startup; fall back to CGEventSource only |
-| LM Studio not running / model not loaded | Connection check at startup with clear error message |
-
-## Privacy Design
-
-- **No content recording**: Only metadata is collected (app names, event counts, idle time)
-- **No key logging**: Only keyboard event counts, never keystroke content
-- **No screen capture**: Camera captures user's face only, never screen content
-- **On-device processing**: Video frames are processed locally, never sent externally
+Private - Google Cloud Japan AI Hackathon Vol.4
