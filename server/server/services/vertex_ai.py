@@ -38,7 +38,7 @@ class VertexAIService:
             from vertexai.generative_models import GenerativeModel  # type: ignore[import-untyped]
 
             vertexai.init(project=project_id, location=location)
-            self._model = GenerativeModel("gemini-2.0-flash")
+            self._model = GenerativeModel("gemini-2.5-flash")
             self._available = True
             logger.info("Vertex AI initialised (project=%s, location=%s)", project_id, location)
         except Exception as exc:
