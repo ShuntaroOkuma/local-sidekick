@@ -11,7 +11,11 @@ dependencies = [
     "uvicorn>=0.34",
     "python-jose[cryptography]>=3.3",
     "passlib[bcrypt]>=1.7",
+    "bcrypt>=4.0,<5",
     "google-cloud-firestore>=2.19",
     "google-cloud-aiplatform>=1.74",
     "pydantic>=2.0",
 ]
+
+[tool.setuptools.packages.find]
+include = ["server*"]
