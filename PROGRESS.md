@@ -21,7 +21,7 @@ All PRs target `feat/avatar-poc` branch. After all merged, `feat/avatar-poc` wil
 ### Step 0: Branch & Worktree Setup
 - [x] Base branch `feat/avatar-poc` created from main
 - [x] PROGRESS.md created
-- [ ] Git worktrees created for each member
+- [x] Git worktrees created for each member
 
 ### Step 1: Transparent Window Foundation (window-dev)
 - [ ] avatar-window.ts - BrowserWindow creation (transparent, frameless, alwaysOnTop)
@@ -75,4 +75,10 @@ type AvatarMode = "hidden" | "wake-up" | "peek" | "stretch" | "dozing" | "retrea
 ```
 
 ## Failed Approaches & Notes
-(Record failed approaches here for future reference)
+
+### Attempt 1: Agent Team feature (2025-02-12)
+- Used `TeamCreate` + `Task` with `team_name` parameter
+- Setting: `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` in settings.local.json
+- **Problem**: All 4 agents (window-dev, avatar-dev, integration-dev, reviewer) were blocked on `permission_request` messages. Even with `mode: "bypassPermissions"`, the Team messaging system routed permission requests to the team lead, causing all agents to wait indefinitely for approval.
+- `backendType: "in-process"` agents cannot bypass the team permission management layer.
+- **Resolution**: Team disbanded. Next attempt should use Task (subagent) without `team_name`, while still using git worktrees and PRs for the git workflow.
