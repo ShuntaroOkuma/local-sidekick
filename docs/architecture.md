@@ -97,7 +97,9 @@ local-sidekick/
 │   │   │   ├── Report.tsx       # 日次レポート表示
 │   │   │   └── Settings.tsx     # 設定画面
 │   │   ├── components/
+│   │   │   ├── Layout.tsx
 │   │   │   ├── StateIndicator.tsx
+│   │   │   ├── StatsSummary.tsx
 │   │   │   ├── TimelineChart.tsx
 │   │   │   └── NotificationCard.tsx
 │   │   ├── hooks/
@@ -149,7 +151,8 @@ local-sidekick/
 │   ├── server/
 │   │   ├── __init__.py
 │   │   ├── main.py                # FastAPI エントリポイント
-│   │   ├── auth.py                # Firebase Auth / JWT
+│   │   ├── auth.py                # JWT認証
+│   │   ├── deps.py                # 共有Firestoreシングルトン
 │   │   ├── api/
 │   │   │   ├── __init__.py
 │   │   │   ├── settings.py        # 設定同期 CRUD
@@ -158,7 +161,7 @@ local-sidekick/
 │   │   ├── services/
 │   │   │   ├── __init__.py
 │   │   │   ├── vertex_ai.py       # Vertex AI (Gemini) 連携
-│   │   │   └── firestore.py       # Firestore クライアント
+│   │   │   └── firestore_client.py # Firestore クライアント (InMemoryStore fallback)
 │   │   └── models/
 │   │       ├── __init__.py
 │   │       └── schemas.py         # Pydantic モデル
@@ -180,13 +183,18 @@ PoCのコードを再構成して常駐サービス化する。
 
 ```python
 # FastAPI app with:
-# - /api/state           GET  → 現在の状態
-# - /api/history         GET  → 履歴データ
-# - /api/settings        GET/PUT → ローカル設定
-# - /api/daily-stats     GET  → 日次集計
-# - /ws/state            WS   → リアルタイム状態配信
-# - /api/engine/start    POST → 監視開始
-# - /api/engine/stop     POST → 監視停止
+# - /api/health                    GET  → ヘルスチェック
+# - /api/state                     GET  → 現在の状態
+# - /api/history                   GET  → 履歴データ
+# - /api/settings                  GET/PUT → ローカル設定
+# - /api/daily-stats               GET  → 日次集計
+# - /api/notifications             GET  → 通知一覧
+# - /api/notifications/pending     GET  → 未応答通知
+# - /api/notifications/{id}/respond POST → 通知応答
+# - /api/reports/generate          POST → レポート生成
+# - /ws/state                      WS   → リアルタイム状態配信
+# - /api/engine/start              POST → 監視開始
+# - /api/engine/stop               POST → 監視停止
 ```
 
 #### メインループ（バックグラウンドタスク）
@@ -236,6 +244,8 @@ PoCのコードを再構成して常駐サービス化する。
 #### 履歴ストア (history/store.py)
 
 SQLite (`~/.local-sidekick/history.db`):
+
+書き込みはバッチコミット: 10件ごと、または30秒ごとにフラッシュ。
 
 ```sql
 CREATE TABLE state_log (
@@ -534,17 +544,17 @@ Camera State + PC State → Integrator → Final State
 
 ### やること (Must)
 
-- [ ] メニューバー常駐 Electron アプリ
-- [ ] カメラ → 特徴量 → 状態推定（PoC流用）
-- [ ] PC利用状況モニタリング（PoC流用）
-- [ ] カメラ + PC 統合判定
-- [ ] 通知3種（眠気/散漫/過集中）
-- [ ] リアルタイムダッシュボード
-- [ ] 今日のタイムライン表示
-- [ ] SQLite履歴保存
-- [ ] Cloud Run API（認証 + 設定同期）
-- [ ] Vertex AI (Gemini) 日次レポート生成
-- [ ] 設定画面
+- [x] メニューバー常駐 Electron アプリ
+- [x] カメラ → 特徴量 → 状態推定（PoC流用）
+- [x] PC利用状況モニタリング（PoC流用）
+- [x] カメラ + PC 統合判定
+- [x] 通知3種（眠気/散漫/過集中）
+- [x] リアルタイムダッシュボード
+- [x] 今日のタイムライン表示
+- [x] SQLite履歴保存
+- [x] Cloud Run API（認証 + 設定同期）
+- [x] Vertex AI (Gemini) 日次レポート生成
+- [x] 設定画面
 
 ### やらないこと (Won't)
 
@@ -582,14 +592,17 @@ cd client && npm run dev
 ### Cloud Run動作確認
 
 ```bash
-# 1. ローカルテスト
-cd server && uvicorn server.main:app --reload
+# 1. ローカルテスト（GCP未設定時はインメモリストアで動作）
+cd server
+USE_MEMORY_STORE=true JWT_SECRET=test-secret uvicorn server.main:app --port 8081
 
 # 2. Cloud Runデプロイ
-gcloud run deploy local-sidekick-api --source .
+cd server && gcloud run deploy local-sidekick-api --source .
 
 # 3. APIテスト
 curl -X POST $CLOUD_RUN_URL/api/reports/generate \
   -H "Authorization: Bearer $TOKEN" \
   -d '{"date":"2026-02-11", "focused_minutes": 240, ...}'
 ```
+
+詳細な動作確認手順は [docs/manual-testing.md](manual-testing.md) を参照。
