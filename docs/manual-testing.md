@@ -21,12 +21,20 @@ pip install -e .
 **モデルファイルが必要な場合（カメラ・LLM機能）:**
 
 ```bash
-# MediaPipe モデル（カメラ機能用）
-python -c "import mediapipe as mp; mp.solutions.face_mesh.FaceMesh()"
+# MediaPipe FaceLandmarker モデル（カメラ機能用）
+# engine/models/ ディレクトリにダウンロード
+curl -L -o models/face_landmarker.task \
+  "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+
+# 動作確認（Tasks APIを使用）
+python -c "from mediapipe.tasks.python.vision import FaceLandmarker; print('MediaPipe OK')"
 
 # GGUF モデル（LLMフォールバック用）
-# models/ ディレクトリに Qwen2.5-3B-Instruct-Q4_K_M.gguf を配置
+# engine/models/ ディレクトリに Qwen2.5-3B-Instruct-Q4_K_M.gguf を配置
 ```
+
+> **注意**: EngineはMediaPipe Tasks API (`mediapipe.tasks.python.vision.FaceLandmarker`) を使用しています。
+> 旧Solutions API (`mediapipe.solutions.face_mesh`) とは異なります。
 
 ### 1.2 起動
 
