@@ -15,23 +15,29 @@
 cd engine
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .
+pip install -e ".[llama,download]"  # llama-cpp-python + huggingface-hub を含めてインストール
 ```
 
-**モデルファイルが必要な場合（カメラ・LLM機能）:**
+**モデルファイルのダウンロード:**
 
 ```bash
-# MediaPipe FaceLandmarker モデル（カメラ機能用）
-# engine/models/ ディレクトリにダウンロード
-curl -L -o models/face_landmarker.task \
-  "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task"
+# 全モデルをダウンロード（face_landmarker + GGUF 3Bモデル）
+python models/download.py
+# 期待: face_landmarker (3.6MB) + qwen2.5-3b-instruct-q4_k_m.gguf (2.0GB)
 
-# 動作確認（Tasks APIを使用）
+# ダウンロード確認
+python models/download.py --check
+
+# 動作確認（MediaPipe Tasks API）
 python -c "from mediapipe.tasks.python.vision import FaceLandmarker; print('MediaPipe OK')"
 
-# GGUF モデル（LLMフォールバック用）
-# engine/models/ ディレクトリに Qwen2.5-3B-Instruct-Q4_K_M.gguf を配置
+# 動作確認（llama-cpp-python）
+python -c "from llama_cpp import Llama; print('llama-cpp-python OK')"
 ```
+
+> **モデルの用途:**
+> - `face_landmarker.task`: カメラの顔ランドマーク検出（EAR, 頭部姿勢, 視線）
+> - `qwen2.5-3b-instruct-q4_k_m.gguf`: ルール分類器が判定不能な場合のLLMフォールバック（llama-cpp-pythonで実行）
 
 > **注意**: EngineはMediaPipe Tasks API (`mediapipe.tasks.python.vision.FaceLandmarker`) を使用しています。
 > 旧Solutions API (`mediapipe.solutions.face_mesh`) とは異なります。
@@ -52,49 +58,49 @@ INFO: Engine started on http://localhost:18080
 
 ```bash
 # ヘルスチェック
-curl -s http://localhost:18080/api/health | python3 -m json.tool
+curl -s http://localhost:18080/api/health | python3 -m json.tool --no-ensure-ascii
 # 期待: {"status": "ok"}
 
 # 現在の状態取得
-curl -s http://localhost:18080/api/state | python3 -m json.tool
+curl -s http://localhost:18080/api/state | python3 -m json.tool --no-ensure-ascii
 # 期待: state, confidence, camera_state, pc_state, timestamp を含むJSON
 
 # 設定取得
-curl -s http://localhost:18080/api/settings | python3 -m json.tool
+curl -s http://localhost:18080/api/settings | python3 -m json.tool --no-ensure-ascii
 # 期待: working_hours_start, working_hours_end, distracted_cooldown_minutes(=20) 等
 
 # 設定更新
 curl -s -X PUT http://localhost:18080/api/settings \
   -H "Content-Type: application/json" \
-  -d '{"max_notifications_per_day": 10}' | python3 -m json.tool
+  -d '{"max_notifications_per_day": 10}' | python3 -m json.tool --no-ensure-ascii
 # 期待: max_notifications_per_day が 10 に更新
 
 # 履歴取得
-curl -s http://localhost:18080/api/history | python3 -m json.tool
+curl -s http://localhost:18080/api/history | python3 -m json.tool --no-ensure-ascii
 # 期待: state_log 配列（起動直後は少量）
 
 # 日次統計
-curl -s http://localhost:18080/api/daily-stats | python3 -m json.tool
+curl -s http://localhost:18080/api/daily-stats | python3 -m json.tool --no-ensure-ascii
 # 期待: focused_minutes, drowsy_minutes 等（unprefixed keys）
 
 # 通知一覧
-curl -s http://localhost:18080/api/notifications | python3 -m json.tool
+curl -s http://localhost:18080/api/notifications | python3 -m json.tool --no-ensure-ascii
 # 期待: 空配列（通知未発生の場合）
 
 # 未応答通知
-curl -s http://localhost:18080/api/notifications/pending | python3 -m json.tool
+curl -s http://localhost:18080/api/notifications/pending | python3 -m json.tool --no-ensure-ascii
 # 期待: 空配列
 
 # エンジン停止
-curl -s -X POST http://localhost:18080/api/engine/stop | python3 -m json.tool
+curl -s -X POST http://localhost:18080/api/engine/stop | python3 -m json.tool --no-ensure-ascii
 # 期待: {"status": "stopped"}
 
 # エンジン再起動
-curl -s -X POST http://localhost:18080/api/engine/start | python3 -m json.tool
+curl -s -X POST http://localhost:18080/api/engine/start | python3 -m json.tool --no-ensure-ascii
 # 期待: {"status": "started"}
 
 # レポート生成（ダミー）
-curl -s -X POST http://localhost:18080/api/reports/generate | python3 -m json.tool
+curl -s -X POST http://localhost:18080/api/reports/generate | python3 -m json.tool --no-ensure-ascii
 # 期待: 日次統計 + report フィールド
 ```
 
@@ -194,13 +200,13 @@ USE_MEMORY_STORE=true JWT_SECRET=test-secret uvicorn server.main:app --port 8081
 BASE=http://localhost:8081
 
 # 1. ヘルスチェック
-curl -s $BASE/api/health | python3 -m json.tool
+curl -s $BASE/api/health | python3 -m json.tool --no-ensure-ascii
 # 期待: {"status": "ok", "service": "local-sidekick-api"}
 
 # 2. ユーザー登録
 curl -s -X POST $BASE/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","password":"testpass123"}' | python3 -m json.tool
+  -d '{"email":"test@example.com","password":"testpass123"}' | python3 -m json.tool --no-ensure-ascii
 # 期待: {"access_token": "eyJ...", "token_type": "bearer"}
 
 # 3. ログイン
@@ -213,14 +219,14 @@ echo "Token: ${TOKEN:0:30}..."
 
 # 4. 設定取得
 curl -s $BASE/api/settings/ \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool --no-ensure-ascii
 # 期待: デフォルト設定（working_hours_start: "09:00" 等）
 
 # 5. 設定更新
 curl -s -X PUT $BASE/api/settings/ \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"camera_enabled":false}' | python3 -m json.tool
+  -d '{"camera_enabled":false}' | python3 -m json.tool --no-ensure-ascii
 # 期待: camera_enabled が false に更新
 
 # 6. 統計アップロード
@@ -228,7 +234,7 @@ curl -s -X POST $BASE/api/statistics/ \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"date":"2026-02-11","focused_minutes":240,"drowsy_minutes":30,"distracted_minutes":45,"away_minutes":60,"idle_minutes":25,"notification_count":3}' \
-  | python3 -m json.tool
+  | python3 -m json.tool --no-ensure-ascii
 # 期待: {"status": "ok", "date": "2026-02-11"}
 
 # 7. レポート生成
@@ -236,13 +242,13 @@ curl -s -X POST $BASE/api/reports/generate \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
   -d '{"date":"2026-02-11","focused_minutes":240,"drowsy_minutes":30,"distracted_minutes":45,"away_minutes":60,"idle_minutes":25,"notification_count":3}' \
-  | python3 -m json.tool
+  | python3 -m json.tool --no-ensure-ascii
 # 期待: summary, highlights, concerns, tomorrow_tip を含むJSON
 # (Vertex AI未接続時はダミーレポート)
 
 # 8. レポート取得
 curl -s $BASE/api/reports/2026-02-11 \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool --no-ensure-ascii
 # 期待: 手順7で生成したレポートと同内容
 ```
 
@@ -252,17 +258,17 @@ curl -s $BASE/api/reports/2026-02-11 \
 # 重複登録 → 409
 curl -s -X POST $BASE/api/auth/register \
   -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","password":"testpass123"}' | python3 -m json.tool
+  -d '{"email":"test@example.com","password":"testpass123"}' | python3 -m json.tool --no-ensure-ascii
 # 期待: {"detail": "User with this email already exists"}
 
 # パスワード不一致 → 401
 curl -s -X POST $BASE/api/auth/login \
   -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","password":"wrong"}' | python3 -m json.tool
+  -d '{"email":"test@example.com","password":"wrong"}' | python3 -m json.tool --no-ensure-ascii
 # 期待: {"detail": "Invalid email or password"}
 
 # 認証なしアクセス → 403
-curl -s $BASE/api/settings/ | python3 -m json.tool
+curl -s $BASE/api/settings/ | python3 -m json.tool --no-ensure-ascii
 # 期待: {"detail": "Not authenticated"}
 ```
 
