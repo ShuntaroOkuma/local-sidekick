@@ -45,10 +45,13 @@ export const api = {
   // Current state
   getState: (): Promise<EngineState> => request("/api/state"),
 
-  // History
-  getHistory: (date?: string): Promise<HistoryEntry[]> => {
+  // History (API returns { state_log, notifications, count })
+  getHistory: async (date?: string): Promise<HistoryEntry[]> => {
     const params = date ? `?date=${date}` : "";
-    return request(`/api/history${params}`);
+    const res = await request<{ state_log: HistoryEntry[] }>(
+      `/api/history${params}`
+    );
+    return res.state_log ?? [];
   },
 
   // Daily stats
