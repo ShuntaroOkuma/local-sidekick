@@ -1,0 +1,12 @@
+# Override file to enable real Vertex AI
+#
+# Usage:
+#   gcloud auth application-default login
+#   GCP_PROJECT_ID=your-project docker compose -f docker-compose.yml -f docker-compose.vertex.yml up --build
+services:
+  api:
+    environment:
+      - GCP_PROJECT_ID=${GCP_PROJECT_ID}
+      - GCP_LOCATION=asia-northeast1
+    volumes:
+      - ${HOME}/.config/gcloud/application_default_credentials.json:/root/.config/gcloud/application_default_credentials.json:ro
