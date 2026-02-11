@@ -67,5 +67,12 @@ export function createStateDebouncer(delayMs: number = 1000) {
     getCurrentMode(): AvatarMode {
       return currentMode;
     },
+
+    cancel(): void {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+    },
   };
 }
