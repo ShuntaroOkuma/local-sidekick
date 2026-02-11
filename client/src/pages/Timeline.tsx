@@ -1,22 +1,69 @@
 import { useState, useEffect } from "react";
 import { TimelineChart } from "../components/TimelineChart";
+import { useSettings } from "../hooks/useSettings";
 import { api } from "../lib/api";
 import type { HistoryEntry, NotificationEntry } from "../lib/types";
+
+function formatDateLabel(date: Date): string {
+  return date.toLocaleDateString("ja-JP", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    weekday: "long",
+  });
+}
+
+function isSameDay(a: Date, b: Date): boolean {
+  return (
+    a.getFullYear() === b.getFullYear() &&
+    a.getMonth() === b.getMonth() &&
+    a.getDate() === b.getDate()
+  );
+}
+
+function parseHour(timeStr: string): number {
+  const h = parseInt(timeStr.split(":")[0], 10);
+  return Number.isFinite(h) ? h : 9;
+}
+
+/** Build Unix timestamp range for a given date + hour range */
+function buildTimeRange(
+  date: Date,
+  startHour: number,
+  endHour: number
+): { start: number; end: number } {
+  const start = new Date(date);
+  start.setHours(startHour, 0, 0, 0);
+  const end = new Date(date);
+  end.setHours(endHour, 0, 0, 0);
+  return {
+    start: Math.floor(start.getTime() / 1000),
+    end: Math.floor(end.getTime() / 1000),
+  };
+}
 
 export function Timeline() {
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [notifications, setNotifications] = useState<NotificationEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [selectedDate, setSelectedDate] = useState(() => new Date());
+  const { settings } = useSettings();
+
+  const startHour = parseHour(settings.working_hours_start);
+  const endHour = parseHour(settings.working_hours_end);
+
+  const isToday = isSameDay(selectedDate, new Date());
 
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
       setError(null);
       try {
+        const range = buildTimeRange(selectedDate, startHour, endHour);
         const [historyData, notifsData] = await Promise.all([
-          api.getHistory(),
-          api.getNotifications(),
+          api.getHistory(range),
+          api.getNotifications(range),
         ]);
         setHistory(historyData);
         setNotifications(notifsData);
@@ -29,26 +76,89 @@ export function Timeline() {
     }
 
     fetchData();
-    const interval = setInterval(fetchData, 60000); // Refresh every minute
-    return () => clearInterval(interval);
-  }, []);
+    if (isToday) {
+      const interval = setInterval(fetchData, 60000);
+      return () => clearInterval(interval);
+    }
+  }, [selectedDate, isToday, startHour, endHour]);
 
-  const today = new Date().toLocaleDateString("ja-JP", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-    weekday: "long",
-  });
+  function goToPreviousDay() {
+    setSelectedDate((prev) => {
+      const next = new Date(prev);
+      next.setDate(next.getDate() - 1);
+      return next;
+    });
+  }
+
+  function goToNextDay() {
+    if (isToday) return;
+    setSelectedDate((prev) => {
+      const next = new Date(prev);
+      next.setDate(next.getDate() + 1);
+      return next;
+    });
+  }
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-xl font-bold text-gray-100">Timeline</h1>
-        <p className="text-sm text-gray-500 mt-1">{today}</p>
+        {/* Date navigation */}
+        <div className="flex items-center gap-3 mt-1">
+          <button
+            onClick={goToPreviousDay}
+            className="text-gray-500 hover:text-gray-300 transition-colors p-1"
+            aria-label="前の日"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M15 19l-7-7 7-7"
+              />
+            </svg>
+          </button>
+          <p className="text-sm text-gray-500">
+            {formatDateLabel(selectedDate)}
+            {isToday && (
+              <span className="ml-2 text-xs text-blue-400">today</span>
+            )}
+          </p>
+          <button
+            onClick={goToNextDay}
+            disabled={isToday}
+            className={`p-1 transition-colors ${
+              isToday
+                ? "text-gray-700 cursor-not-allowed"
+                : "text-gray-500 hover:text-gray-300"
+            }`}
+            aria-label="次の日"
+          >
+            <svg
+              className="w-4 h-4"
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M9 5l7 7-7 7"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {loading && (
-        <div className="bg-gray-800 rounded-lg p-8 animate-pulse h-32" />
+        <div className="bg-gray-800 rounded-lg p-8 animate-pulse h-64" />
       )}
 
       {error && (
@@ -67,11 +177,17 @@ export function Timeline() {
               <TimelineChart
                 history={history}
                 notifications={notifications}
+                startHour={startHour}
+                endHour={endHour}
               />
             ) : (
               <div className="text-center py-8 text-gray-500">
                 <p>データがまだありません</p>
-                <p className="text-xs mt-1">Engineが起動するとデータが蓄積されます</p>
+                <p className="text-xs mt-1">
+                  {isToday
+                    ? "Engineが起動するとデータが蓄積されます"
+                    : "この日のデータはありません"}
+                </p>
               </div>
             )}
           </div>
