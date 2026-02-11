@@ -4,8 +4,14 @@ import { createTray, updateTrayIcon } from "./tray";
 import { PythonBridge } from "./python-bridge";
 import { showNotification } from "./notification";
 import type { NotificationType } from "./notification";
+import {
+  createAvatarWindow,
+  getAvatarWindow,
+  sendToAvatar,
+} from "./avatar-window";
 
 let mainWindow: BrowserWindow | null = null;
+let avatarWin: BrowserWindow | null = null;
 let pythonBridge: PythonBridge | null = null;
 let statePollingTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -53,6 +59,9 @@ function startStatePolling(): void {
         // Update tray icon based on state
         updateTrayIcon(state.state);
 
+        // Forward state to avatar window
+        sendToAvatar("avatar-state-update", state);
+
         // Check for notifications
         const notifRes = await fetch(
           `http://localhost:${port}/api/notifications/pending`
@@ -60,6 +69,9 @@ function startStatePolling(): void {
         if (notifRes.ok) {
           const notifications = await notifRes.json();
           for (const notif of notifications) {
+            // Forward notification to avatar window
+            sendToAvatar("avatar-notification", notif);
+
             showNotification(
               notif.type as NotificationType,
               (action: string) => {
@@ -102,6 +114,22 @@ function stopStatePolling(): void {
 app.whenReady().then(async () => {
   mainWindow = createWindow();
 
+  // Create avatar overlay window
+  avatarWin = createAvatarWindow();
+  if (process.env.ELECTRON_RENDERER_URL) {
+    // In dev, replace index.html with avatar.html in the dev server URL
+    const devUrl = process.env.ELECTRON_RENDERER_URL.replace(
+      /\/$/,
+      ""
+    );
+    avatarWin.loadURL(`${devUrl}/src/avatar/avatar.html`);
+  } else {
+    avatarWin.loadFile(join(__dirname, "../dist/avatar.html"));
+  }
+  avatarWin.once("ready-to-show", () => {
+    avatarWin?.show();
+  });
+
   // Create tray
   createTray(mainWindow);
 
@@ -122,6 +150,17 @@ app.whenReady().then(async () => {
   ipcMain.on("notification-response", (_event, data) => {
     const { type, action } = data;
     console.log(`Notification response: ${type} -> ${action}`);
+  });
+
+  ipcMain.on("avatar-toggle", () => {
+    const win = getAvatarWindow();
+    if (win) {
+      if (win.isVisible()) {
+        win.hide();
+      } else {
+        win.show();
+      }
+    }
   });
 
   // Start Python Engine
