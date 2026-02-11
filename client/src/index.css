@@ -1,5 +1,13 @@
 @import "tailwindcss";
 
+@theme {
+  --color-focused: #22c55e;
+  --color-drowsy: #ef4444;
+  --color-distracted: #eab308;
+  --color-away: #6b7280;
+  --color-idle: #9ca3af;
+}
+
 /* Custom scrollbar for dark theme */
 ::-webkit-scrollbar {
   width: 6px;
