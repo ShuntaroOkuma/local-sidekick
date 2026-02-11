@@ -53,18 +53,33 @@ class FirestoreClient:
             logger.info("USE_MEMORY_STORE is set. Using in-memory store.")
             self._use_memory = True
             return
-        try:
-            import google.auth  # type: ignore[import-untyped]
 
-            credentials, project = google.auth.default()
-            if project is None:
-                raise RuntimeError("No GCP project configured")
+        emulator_host = os.environ.get("FIRESTORE_EMULATOR_HOST", "")
+
+        try:
             from google.cloud import firestore  # type: ignore[import-untyped]
 
-            self._firestore_db = firestore.AsyncClient(
-                project=project, credentials=credentials
-            )
-            logger.info("Firestore client initialised (project=%s)", project)
+            if emulator_host:
+                project = os.environ.get(
+                    "GOOGLE_CLOUD_PROJECT", "local-sidekick-dev"
+                )
+                self._firestore_db = firestore.AsyncClient(project=project)
+                logger.info(
+                    "Firestore client initialised with emulator "
+                    "(host=%s, project=%s)",
+                    emulator_host,
+                    project,
+                )
+            else:
+                import google.auth  # type: ignore[import-untyped]
+
+                credentials, project = google.auth.default()
+                if project is None:
+                    raise RuntimeError("No GCP project configured")
+                self._firestore_db = firestore.AsyncClient(
+                    project=project, credentials=credentials
+                )
+                logger.info("Firestore client initialised (project=%s)", project)
         except Exception as exc:
             logger.warning(
                 "Firestore unavailable (%s). Using in-memory store.", exc
