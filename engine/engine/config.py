@@ -23,7 +23,7 @@ MODELS_DIR = Path(__file__).parent.parent / "models"
 # --- Model paths ---
 
 # Text mode models (GGUF for llama-cpp-python)
-TEXT_LLAMA_CPP_7B = MODELS_DIR / "qwen2.5-7b-instruct-q4_k_m.gguf"
+TEXT_LLAMA_CPP_7B = MODELS_DIR / "qwen2.5-7b-instruct-q4_k_m-00001-of-00002.gguf"
 TEXT_LLAMA_CPP_3B = MODELS_DIR / "qwen2.5-3b-instruct-q4_k_m.gguf"
 
 # MediaPipe
@@ -59,7 +59,7 @@ class EngineConfig:
     drowsy_cooldown_minutes: int = 15
     distracted_cooldown_minutes: int = 20
     over_focus_cooldown_minutes: int = 30
-    drowsy_trigger_seconds: int = 120
+    drowsy_trigger_seconds: int = 10
     distracted_trigger_seconds: int = 120
     over_focus_window_minutes: int = 90
     over_focus_threshold_minutes: int = 80

@@ -15,3 +15,5 @@ __pycache__/
 
 # Model files (large binaries, downloaded separately)
 poc/models/
+engine/models/*.gguf
+engine/models/*.task
