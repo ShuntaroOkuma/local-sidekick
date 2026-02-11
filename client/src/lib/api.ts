@@ -17,7 +17,7 @@ async function getBaseUrl(): Promise<string> {
   } catch {
     _baseUrl = DEFAULT_BASE_URL;
   }
-  return _baseUrl;
+  return _baseUrl ?? DEFAULT_BASE_URL;
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
