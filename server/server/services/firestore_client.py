@@ -49,11 +49,22 @@ class FirestoreClient:
 
     def _init_firestore(self) -> None:
         """Attempt to initialise the Firestore async client."""
+        if os.environ.get("USE_MEMORY_STORE", "").lower() in ("1", "true", "yes"):
+            logger.info("USE_MEMORY_STORE is set. Using in-memory store.")
+            self._use_memory = True
+            return
         try:
+            import google.auth  # type: ignore[import-untyped]
+
+            credentials, project = google.auth.default()
+            if project is None:
+                raise RuntimeError("No GCP project configured")
             from google.cloud import firestore  # type: ignore[import-untyped]
 
-            self._firestore_db = firestore.AsyncClient()
-            logger.info("Firestore client initialised successfully")
+            self._firestore_db = firestore.AsyncClient(
+                project=project, credentials=credentials
+            )
+            logger.info("Firestore client initialised (project=%s)", project)
         except Exception as exc:
             logger.warning(
                 "Firestore unavailable (%s). Using in-memory store.", exc
