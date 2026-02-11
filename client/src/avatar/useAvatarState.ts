@@ -40,6 +40,7 @@ export function useAvatarState() {
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const notificationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const debouncerRef = useRef(createStateDebouncer(1000));
 
   const connect = useCallback(async () => {
@@ -77,8 +78,14 @@ export function useAvatarState() {
               timestamp: data.timestamp || Date.now(),
             });
 
-            // Auto-dismiss notification after 5 seconds
-            setTimeout(() => setNotification(null), 5000);
+            // Auto-dismiss notification after 5 seconds, clearing any previous timer
+            if (notificationTimerRef.current) {
+              clearTimeout(notificationTimerRef.current);
+            }
+            notificationTimerRef.current = setTimeout(() => {
+              setNotification(null);
+              notificationTimerRef.current = null;
+            }, 5000);
           } else if (data.state) {
             const engineState = data.state as EngineUserState;
             const newMode = engineStateToAvatarMode(engineState);
@@ -115,6 +122,8 @@ export function useAvatarState() {
     connect();
     return () => {
       if (reconnectTimerRef.current) clearTimeout(reconnectTimerRef.current);
+      if (notificationTimerRef.current) clearTimeout(notificationTimerRef.current);
+      debouncerRef.current.cancel();
       if (wsRef.current) wsRef.current.close();
     };
   }, [connect]);

@@ -6,24 +6,24 @@
 
 export type AvatarMode =
   | "hidden"
-  | "idle"
-  | "focus"
-  | "drowsy"
-  | "break"
-  | "stretch";
+  | "wake-up"
+  | "peek"
+  | "stretch"
+  | "dozing"
+  | "retreat";
 
 type EngineUserState = "focused" | "drowsy" | "distracted" | "away" | "idle";
 
 const STATE_MAP: Record<EngineUserState, AvatarMode> = {
-  focused: "focus",
-  drowsy: "drowsy",
-  distracted: "break",
-  away: "hidden",
-  idle: "idle",
+  focused: "hidden",
+  drowsy: "wake-up",
+  distracted: "peek",
+  away: "dozing",
+  idle: "dozing",
 };
 
 export function engineStateToAvatarMode(state: EngineUserState): AvatarMode {
-  return STATE_MAP[state] ?? "idle";
+  return STATE_MAP[state] ?? "dozing";
 }
 
 /**
@@ -40,6 +40,12 @@ export function createStateDebouncer(delayMs: number) {
         setter(newMode);
         timer = null;
       }, delayMs);
+    },
+    cancel() {
+      if (timer) {
+        clearTimeout(timer);
+        timer = null;
+      }
     },
   };
 }
