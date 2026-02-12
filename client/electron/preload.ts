@@ -22,4 +22,8 @@ contextBridge.exposeInMainWorld("electronAPI", {
     ipcRenderer.on("navigate", handler);
     return () => ipcRenderer.removeListener("navigate", handler);
   },
+
+  getAvatarEnabled: (): Promise<boolean> => ipcRenderer.invoke("get-avatar-enabled"),
+
+  setAvatarEnabled: (enabled: boolean): Promise<void> => ipcRenderer.invoke("set-avatar-enabled", enabled),
 });

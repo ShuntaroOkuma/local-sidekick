@@ -2,11 +2,13 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import { join } from "path";
 import { createTray, updateTrayIcon } from "./tray";
 import { PythonBridge } from "./python-bridge";
-import { showNotification, setAvatarEnabled } from "./notification";
+import { showNotification, setAvatarEnabled, isAvatarEnabled } from "./notification";
 import type { NotificationType } from "./notification";
 import {
   createAvatarWindow,
   sendToAvatar,
+  showAvatarWindow,
+  hideAvatarWindow,
 } from "./avatar-window";
 
 let mainWindow: BrowserWindow | null = null;
@@ -145,6 +147,19 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("get-platform", () => {
     return process.platform;
+  });
+
+  ipcMain.handle("get-avatar-enabled", () => {
+    return isAvatarEnabled();
+  });
+
+  ipcMain.handle("set-avatar-enabled", (_event, enabled: boolean) => {
+    setAvatarEnabled(enabled);
+    if (enabled) {
+      showAvatarWindow();
+    } else {
+      hideAvatarWindow();
+    }
   });
 
   ipcMain.on("notification-response", (_event, data) => {
