@@ -57,6 +57,8 @@ local-sidekick/
 │   │   └── main.py           # FastAPI entry point
 │   ├── Dockerfile
 │   └── pyproject.toml
+├── tools/                    # Development & testing utilities
+│   └── mock_engine.py        # Mock Engine for avatar testing (WebSocket + REST)
 ├── poc/                      # Proof of Concept (reference, not modified)
 ├── docs/
 │   ├── architecture.md       # Detailed MVP design
