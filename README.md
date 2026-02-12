@@ -8,6 +8,7 @@ An always-on macOS observer that detects drowsiness, focus, and distraction usin
 macOS Electron App
   ├── Main Process (Tray, Notifications, Python Bridge)
   ├── Renderer (React: Dashboard, Timeline, Report, Settings)
+  ├── Avatar Overlay (Transparent BrowserWindow, CSS character)
   └── Python Engine (FastAPI @ localhost:18080)
         ├── Camera Pipeline (MediaPipe face landmarks)
         ├── PC Usage Monitor (pynput + pyobjc)
@@ -27,11 +28,12 @@ Google Cloud
 ```
 local-sidekick/
 ├── client/                   # Electron + React app
-│   ├── electron/             # Main process (tray, preload, python-bridge, notification)
+│   ├── electron/             # Main process (tray, preload, python-bridge, notification, avatar-window)
 │   ├── src/                  # React renderer
 │   │   ├── pages/            # Dashboard, Timeline, Report, Settings
 │   │   ├── components/       # StateIndicator, TimelineChart, etc.
 │   │   ├── hooks/            # useEngineState, useSettings
+│   │   ├── avatar/           # Avatar overlay (character, state machine, animations)
 │   │   └── lib/              # api client, types
 │   └── package.json
 ├── engine/                   # Python local backend
@@ -136,11 +138,38 @@ docker compose down
 | -------------------------- | -------------------------------------------------------------------------------- |
 | Real-time state estimation | Camera (face landmarks) + PC usage → focused / drowsy / distracted / away / idle |
 | 3 notification types       | Drowsy (120s), Distracted (120s), Over-focus (80min in 90min window)             |
+| Desktop avatar             | Always-on-top animated character that reacts to your state in real-time           |
 | Dashboard                  | Live state display, confidence bar, today's summary                              |
 | Timeline                   | Color-coded hourly state visualization                                           |
 | Daily Report               | AI-generated summary via Vertex AI (Gemini 2.5 Flash)                            |
 | Settings sync              | Cloud Run API with JWT auth + Firestore                                          |
 | Privacy-first              | All video processed on-device, only statistics sent to cloud                     |
+
+## Avatar Overlay
+
+A small animated character that lives on your desktop and reacts to your current state in real-time.
+
+### How it works
+
+- Runs in a transparent, always-on-top `BrowserWindow` (separate from the main app)
+- Connects directly to the Engine WebSocket (`/ws/state`) for real-time state and notification updates
+- Maps Engine states to avatar animations via a state machine with debouncing
+
+### Avatar modes
+
+| Engine State | Avatar Mode | Behavior                                           |
+| ------------ | ----------- | -------------------------------------------------- |
+| focused      | hidden      | Character retreats and hides (you're in the zone)  |
+| idle         | peek        | Peeks in from the side                             |
+| drowsy       | dozing      | Gentle breathing animation with ZZZ effect         |
+| distracted   | wake-up     | Bounces in to get your attention                   |
+| away         | peek        | Peeks in, waiting for you to return                |
+
+Notifications from the Engine (drowsy, distracted, over-focus) are displayed as speech bubbles above the character, replacing OS-level notifications while the avatar is active.
+
+### Settings
+
+The avatar can be toggled ON/OFF from **Settings > アバター** in the GUI. When turned off, the avatar window is hidden and notifications fall back to OS-level notifications.
 
 ## Tech Stack
 
@@ -164,6 +193,7 @@ docker compose down
 - No screen capture
 - Server receives only aggregated statistics
 - Camera can be disabled in settings
+- Avatar can be disabled in settings
 
 ## Documentation
 
