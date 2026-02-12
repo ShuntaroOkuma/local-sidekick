@@ -41,7 +41,13 @@ export function useModels() {
           )
         );
       } catch (err) {
-        setError("ダウンロードの開始に失敗しました");
+        setModels((prev) =>
+          prev.map((m) =>
+            m.id === modelId
+              ? { ...m, error: "ダウンロードの開始に失敗しました" }
+              : m
+          )
+        );
       }
     },
     []
@@ -53,7 +59,13 @@ export function useModels() {
         await api.deleteModel(modelId);
         await fetchModels();
       } catch (err) {
-        setError("モデルの削除に失敗しました");
+        setModels((prev) =>
+          prev.map((m) =>
+            m.id === modelId
+              ? { ...m, error: "モデルの削除に失敗しました" }
+              : m
+          )
+        );
       }
     },
     [fetchModels]

@@ -122,7 +122,10 @@ def _is_model_downloaded(model_id: str) -> bool:
         return False
 
     gguf: _GGUFDef = entry["gguf"]
-    return (MODELS_DIR / gguf.filename).exists()
+    filenames_to_check = (
+        gguf.shard_filenames if gguf.shard_filenames else (gguf.filename,)
+    )
+    return all((MODELS_DIR / fname).exists() for fname in filenames_to_check)
 
 
 def _build_model_list() -> list[ModelInfo]:
@@ -246,13 +249,13 @@ async def delete_model(model_id: str) -> ModelActionResponse:
         else:
             entry = _MODEL_REGISTRY[model_id]
             gguf: _GGUFDef = entry["gguf"]
-            primary = MODELS_DIR / gguf.filename
-            if primary.exists():
-                primary.unlink()
-            for shard in gguf.shard_filenames:
-                shard_path = MODELS_DIR / shard
-                if shard_path.exists():
-                    shard_path.unlink()
+            filenames_to_delete = (
+                gguf.shard_filenames if gguf.shard_filenames else (gguf.filename,)
+            )
+            for filename in filenames_to_delete:
+                path = MODELS_DIR / filename
+                if path.exists():
+                    path.unlink()
 
         with _download_lock:
             _download_state.pop(model_id, None)
