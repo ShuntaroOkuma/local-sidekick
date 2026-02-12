@@ -63,13 +63,24 @@ _shared_llm_backend = None  # Shared LLM instance to avoid loading model twice
 _llm_lock = asyncio.Lock()  # Lock for thread-safe LLM access
 
 
+_llm_load_failed = False  # Avoid retrying when model file is missing
+
+
 async def _get_shared_llm(config: EngineConfig):
     """Get or create the shared LLM backend (lazy-loaded, singleton).
 
     Uses _llm_lock to prevent concurrent initialization which could
     load the model (2-5GB) into memory twice.
+    Returns None immediately when model_tier is "none" (rule-only mode)
+    or when a previous load attempt already failed (model file missing).
     """
-    global _shared_llm_backend
+    global _shared_llm_backend, _llm_load_failed
+
+    if config.model_tier == "none":
+        return None
+
+    if _llm_load_failed:
+        return None
 
     if _shared_llm_backend is not None:
         return _shared_llm_backend
@@ -78,6 +89,23 @@ async def _get_shared_llm(config: EngineConfig):
         # Double-check after acquiring lock
         if _shared_llm_backend is not None:
             return _shared_llm_backend
+        if _llm_load_failed:
+            return None
+
+        # Check if model file exists before attempting load
+        from pathlib import Path
+        from engine.config import get_text_model
+        try:
+            model_path = get_text_model("llama_cpp", tier=config.model_tier)
+            if not Path(model_path).exists():
+                logger.warning(
+                    "Model file not found at %s, skipping LLM load.", model_path
+                )
+                _llm_load_failed = True
+                return None
+        except ValueError:
+            _llm_load_failed = True
+            return None
 
         try:
             from engine.estimation.llm_backend import LLMBackend
@@ -90,6 +118,7 @@ async def _get_shared_llm(config: EngineConfig):
             return _shared_llm_backend
         except Exception as e:
             logger.warning("Failed to load shared LLM backend: %s", e)
+            _llm_load_failed = True
             return None
 
 
@@ -395,9 +424,11 @@ async def _integration_loop() -> None:
 
 async def apply_config(new_config: EngineConfig) -> None:
     """Apply a new config to the running engine (called from settings API)."""
-    global _config, _notification_engine
+    global _config, _notification_engine, _llm_load_failed
 
     _config = new_config
+    # Reset LLM load failure flag so tier change can trigger a new load attempt
+    _llm_load_failed = False
     # Recreate notification engine with updated settings
     if _notification_engine is not None:
         _notification_engine = _create_notification_engine(_config)
@@ -488,6 +519,44 @@ async def stop_monitoring() -> None:
     logger.info("All monitoring tasks stopped.")
 
 
+# --- Auto-download essential models on first launch ---
+
+
+def _auto_download_essential_models() -> None:
+    """Trigger background downloads for face_landmarker and lightweight model.
+
+    Non-blocking: spawns a daemon thread so the engine starts immediately.
+    Reuses the download functions from the models API module.
+    """
+    from engine.api.models import _is_model_downloaded, _download_worker, _download_lock, _download_state
+
+    models_to_download = []
+    if not _is_model_downloaded("face_landmarker"):
+        models_to_download.append("face_landmarker")
+    if not _is_model_downloaded("qwen2.5-3b"):
+        models_to_download.append("qwen2.5-3b")
+
+    if not models_to_download:
+        logger.info("Essential models already downloaded.")
+        return
+
+    import threading
+
+    def _download_all():
+        for model_id in models_to_download:
+            with _download_lock:
+                _download_state[model_id] = {"status": "downloading", "error": None}
+            _download_worker(model_id)
+
+    logger.info("Auto-downloading essential models: %s", models_to_download)
+    thread = threading.Thread(
+        target=_download_all,
+        daemon=True,
+        name="auto-download-essential",
+    )
+    thread.start()
+
+
 # --- FastAPI app ---
 
 
@@ -506,6 +575,9 @@ async def lifespan(app: FastAPI):
     set_engine_state("pause_callback", pause_monitoring)
     set_engine_state("resume_callback", resume_monitoring)
     set_engine_state("apply_config_callback", apply_config)
+
+    # Auto-download essential models in background on first launch
+    _auto_download_essential_models()
 
     # Auto-start monitoring on launch
     await start_monitoring()
@@ -532,8 +604,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from engine.api.models import router as models_router
+
 app.include_router(api_router)
 app.include_router(ws_router)
+app.include_router(models_router)
 
 
 def main() -> None:
