@@ -53,6 +53,27 @@ All PRs target `feat/avatar-poc` branch. After all merged, `feat/avatar-poc` wil
 - [ ] Full state cycle test (requires running Engine)
 - [ ] Performance check
 
+### Step 6: Testing & Static Analysis (tester team)
+- [x] TypeScript type checking (`tsc --noEmit`) - 1 error found
+- [x] Build verification (`electron-vite build`) - passes (esbuild more lenient than tsc)
+- [x] Static analysis of all 13 avatar-related files
+- [x] Interface consistency check (IPC channels, types, state mapping)
+
+**Issues Found:**
+
+| # | Severity | File | Issue |
+|---|----------|------|-------|
+| 1 | CRITICAL | `electron/avatar-window.ts:16` | `visibleOnAllWorkspaces` is not a valid `BrowserWindowConstructorOptions` property in Electron 34. It is an instance property. Use `win.setVisibleOnAllWorkspaces(true)` after construction. |
+| 2 | CRITICAL | `electron/main.ts:127` | Production path mismatch: expects `dist/avatar.html` but build outputs to `dist/src/avatar/avatar.html`. Avatar window will be blank in production. |
+| 3 | WARNING | `src/avatar/AvatarApp.tsx:51-54` | Memory leak: `debouncer.cancel()` not called in useEffect cleanup. Debouncer timers continue after component unmount. |
+| 4 | WARNING | `src/avatar/AvatarApp.tsx:47` | Memory leak: `setTimeout(() => setNotification(null), 5000)` not cleaned up. Can call `setNotification` on unmounted component. |
+| 5 | WARNING | `src/avatar/useAvatarState.ts:8` | `EngineUserState` type duplicated locally instead of importing from `avatar-state-machine.ts`. Maintenance risk. |
+| 6 | WARNING | `electron/notification.ts` + `electron/main.ts` | `setAvatarEnabled()` never called anywhere. `avatarEnabled` is always false, so OS notifications fire alongside avatar notifications (double notification). |
+| 7 | WARNING | `electron/main.ts:155` | Dead code: `avatar-toggle` IPC handler registered but nothing sends this message. |
+| 8 | WARNING | `electron/main.ts:187` | `before-quit` handler is async but Electron does not await async event handlers. `pythonBridge.stop()` may not complete before quit. |
+| 9 | INFO | `src/avatar/SpeechBubble.tsx` | Component defined but never imported or used anywhere. |
+| 10 | INFO | `src/avatar/useAvatarState.ts` | Hook defined but never imported or used. AvatarApp uses IPC approach instead of WebSocket. |
+
 ## Build Output
 ```
 dist-electron/main.js           11.44 kB  (includes avatar-window import)
