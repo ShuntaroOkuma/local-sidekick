@@ -18,8 +18,7 @@ const TIER_DESCRIPTIONS: Record<ModelTier, string> = {
   none: "LLMを使用せず、ルールベースのみで判定します。モデルのダウンロードは不要です。",
   lightweight:
     "3Bモデルで高速に判定。ルールで判定できない場合のフォールバックとして使用。",
-  recommended:
-    "7Bモデルでより正確に判定。メモリ使用量が多くなります。",
+  recommended: "7Bモデルでより正確に判定。メモリ使用量が多くなります。",
 };
 
 const TIER_TO_MODEL_ID: Record<string, string> = {
@@ -39,8 +38,14 @@ export function ModelSection({ currentTier, onTierChange }: ModelSectionProps) {
   useEffect(() => {
     if (loading || models.length === 0) return;
     if (currentTier === "none") return;
-    const requiredModel = models.find((m) => m.id === TIER_TO_MODEL_ID[currentTier]);
-    if (requiredModel && !requiredModel.downloaded && !requiredModel.downloading) {
+    const requiredModel = models.find(
+      (m) => m.id === TIER_TO_MODEL_ID[currentTier],
+    );
+    if (
+      requiredModel &&
+      !requiredModel.downloaded &&
+      !requiredModel.downloading
+    ) {
       onTierChange("none");
     }
   }, [models, loading, currentTier, onTierChange]);
@@ -81,14 +86,12 @@ export function ModelSection({ currentTier, onTierChange }: ModelSectionProps) {
       {/* Note about engine restart */}
       {currentTier !== "none" && (
         <p className="text-xs text-gray-600">
-          ※ モデル変更はエンジンの再起動後に反映されます
+          ※ モデル変更はアプリ再起動後に反映されます
         </p>
       )}
 
       {/* Model cards */}
-      {error && (
-        <p className="text-xs text-red-400">{error}</p>
-      )}
+      {error && <p className="text-xs text-red-400">{error}</p>}
 
       {loading ? (
         <div className="space-y-2">
