@@ -80,7 +80,7 @@ export function Timeline() {
       const interval = setInterval(fetchData, 60000);
       return () => clearInterval(interval);
     }
-  }, [selectedDate, isToday, startHour, endHour]);
+  }, [selectedDate, startHour, endHour]);
 
   function goToPreviousDay() {
     setSelectedDate((prev) => {

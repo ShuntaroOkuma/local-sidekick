@@ -169,7 +169,7 @@ export function TimelineChart({
           );
           return (
             <div
-              key={i}
+              key={`${seg.state}-${seg.startTime.getTime()}`}
               className={`absolute left-0 w-full ${STATE_DOT_COLORS[seg.state] ?? FALLBACK_DOT} opacity-80 ${
                 i === 0 ? "rounded-t-full" : ""
               } ${i === segments.length - 1 ? "rounded-b-full" : ""}`}
@@ -181,9 +181,9 @@ export function TimelineChart({
           );
         })}
         {/* Notification markers */}
-        {notifsByTime.map((notif, i) => (
+        {notifsByTime.map((notif) => (
           <div
-            key={`notif-${i}`}
+            key={notif.id}
             className="absolute left-1/2 -translate-x-1/2 w-3 h-3 bg-white rounded-full border-2 border-gray-900 z-[1]"
             style={{ top: `${notif.position}%`, marginTop: -6 }}
           />
@@ -192,9 +192,9 @@ export function TimelineChart({
 
       {/* Segment detail list */}
       <div className="flex-1 min-w-0 space-y-1">
-        {segments.map((seg, i) => (
+        {segments.map((seg) => (
           <div
-            key={i}
+            key={`${seg.state}-${seg.startTime.getTime()}`}
             className={`flex items-center gap-3 px-3 py-2 rounded-lg ${(STATE_COLORS[seg.state] ?? FALLBACK_COLOR).bg}`}
           >
             <div
@@ -217,7 +217,7 @@ export function TimelineChart({
         {/* Notification entries inline */}
         {notifsByTime.length > 0 && (
           <div className="mt-3 pt-3 border-t border-gray-800 space-y-1">
-            {notifsByTime.map((notif, i) => {
+            {notifsByTime.map((notif) => {
               const typeLabel =
                 NOTIF_TYPE_LABELS[notif.type] ?? notif.type;
               const actionLabel = notif.user_action
@@ -225,7 +225,7 @@ export function TimelineChart({
                 : "未対応";
               return (
                 <div
-                  key={`notif-detail-${i}`}
+                  key={notif.id}
                   className="flex items-center gap-3 px-3 py-1.5 rounded-lg bg-white/5"
                 >
                   <div className="w-2 h-2 rounded-full flex-shrink-0 bg-white" />
