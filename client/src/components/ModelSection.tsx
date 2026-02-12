@@ -1,3 +1,4 @@
+import { useEffect } from "react";
 import { useModels } from "../hooks/useModels";
 import { ModelCard } from "./ModelCard";
 import type { ModelTier } from "../lib/types";
@@ -33,6 +34,16 @@ export function ModelSection({ currentTier, onTierChange }: ModelSectionProps) {
   const selectedModel = models.find((m) => m.id === selectedModelId);
   const needsDownload =
     currentTier !== "none" && selectedModel && !selectedModel.downloaded;
+
+  // Auto-switch to "none" when selected model is not downloaded
+  useEffect(() => {
+    if (loading || models.length === 0) return;
+    if (currentTier === "none") return;
+    const requiredModel = models.find((m) => m.id === TIER_TO_MODEL_ID[currentTier]);
+    if (requiredModel && !requiredModel.downloaded && !requiredModel.downloading) {
+      onTierChange("none");
+    }
+  }, [models, loading, currentTier, onTierChange]);
 
   return (
     <div className="bg-gray-800/50 rounded-xl p-5 space-y-4">
