@@ -65,9 +65,9 @@ export function useAvatarState() {
             const message =
               data.message || NOTIFICATION_MESSAGES[notifType] || "";
 
-            // over_focus triggers stretch mode
+            // over_focus triggers stretch mode immediately
             if (notifType === "over_focus") {
-              setMode("stretch");
+              debouncerRef.current.forceUpdate("stretch", setMode);
             }
 
             setNotification({

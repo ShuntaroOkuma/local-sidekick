@@ -10,6 +10,7 @@ export type EngineUserState =
   | "focused"
   | "drowsy"
   | "distracted"
+  | "over_focus"
   | "away"
   | "idle";
 
@@ -24,6 +25,8 @@ export function engineStateToAvatarMode(
       return "wake-up";
     case "distracted":
       return "peek";
+    case "over_focus":
+      return "stretch";
     case "away":
     case "idle":
       return "dozing";
@@ -62,6 +65,15 @@ export function createStateDebouncer(delayMs: number = 1000) {
         currentMode = newMode;
         callback(newMode);
       }, delayMs);
+    },
+
+    forceUpdate(newMode: AvatarMode, callback: (mode: AvatarMode) => void): void {
+      if (timeoutId) {
+        clearTimeout(timeoutId);
+        timeoutId = null;
+      }
+      currentMode = newMode;
+      callback(newMode);
     },
 
     getCurrentMode(): AvatarMode {
