@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, powerMonitor } from "electron";
 import { join } from "path";
 import { createTray, updateTrayIcon } from "./tray";
 import { PythonBridge } from "./python-bridge";
@@ -41,6 +41,14 @@ function createWindow(): BrowserWindow {
   win.on("close", (event) => {
     event.preventDefault();
     win.hide();
+  });
+
+  // Auto-reload if the renderer process dies (e.g. GPU reset after sleep)
+  win.webContents.on("render-process-gone", (_event, details) => {
+    console.log(`Renderer gone (reason: ${details.reason}) – reloading`);
+    if (details.reason !== "clean-exit") {
+      win.webContents.reload();
+    }
   });
 
   return win;
@@ -179,6 +187,38 @@ app.whenReady().then(async () => {
 
   // Always start polling (works with both spawned and external Engine)
   startStatePolling();
+
+  // Pause/resume monitoring on system sleep/wake and screen lock/unlock
+  const enginePort = () => pythonBridge?.getPort() ?? 18080;
+
+  function pauseEngine(reason: string): void {
+    console.log(`${reason} – pausing engine monitoring`);
+    stopStatePolling();
+    fetch(`http://localhost:${enginePort()}/api/engine/pause`, {
+      method: "POST",
+    }).catch(() => {});
+  }
+
+  function resumeEngine(reason: string): void {
+    console.log(`${reason} – resuming engine monitoring`);
+    fetch(`http://localhost:${enginePort()}/api/engine/resume`, {
+      method: "POST",
+    }).catch(() => {});
+    startStatePolling();
+
+    // Recover renderer after sleep/lock — macOS can lose the GPU context
+    // or suspend the renderer, leaving the window blank.
+    // Reload the page to guarantee recovery. React will reconnect WS
+    // and re-fetch data on mount, so no state is lost.
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.reload();
+    }
+  }
+
+  powerMonitor.on("suspend", () => pauseEngine("System suspending"));
+  powerMonitor.on("resume", () => resumeEngine("System resumed"));
+  powerMonitor.on("lock-screen", () => pauseEngine("Screen locked"));
+  powerMonitor.on("unlock-screen", () => resumeEngine("Screen unlocked"));
 });
 
 app.on("window-all-closed", () => {
