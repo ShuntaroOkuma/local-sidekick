@@ -23,6 +23,7 @@ export default defineConfig({
       rollupOptions: {
         input: {
           preload: resolve(__dirname, "electron/preload.ts"),
+          "preload-avatar": resolve(__dirname, "electron/preload-avatar.ts"),
         },
       },
     },
@@ -34,6 +35,7 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve(__dirname, "index.html"),
+          avatar: resolve(__dirname, "src/avatar/avatar.html"),
         },
       },
     },

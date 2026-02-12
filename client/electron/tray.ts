@@ -1,60 +1,61 @@
 import { Tray, Menu, nativeImage, BrowserWindow, app } from "electron";
-import { join } from "path";
 
 let tray: Tray | null = null;
 let mainWindow: BrowserWindow | null = null;
 
-const STATE_ICONS: Record<string, string> = {
-  focused: "🟢",
-  drowsy: "🔴",
-  distracted: "🟡",
-  away: "⚪",
-  idle: "⚪",
-  disconnected: "⭕",
+// RGBA colors for each state (drawn as a filled circle in the tray icon)
+const STATE_COLORS: Record<string, [number, number, number, number]> = {
+  focused: [0x34, 0xc7, 0x59, 255], // green
+  drowsy: [0xed, 0x4a, 0x4a, 255], // red
+  distracted: [0xf5, 0xc5, 0x42, 255], // yellow
+  away: [0xbb, 0xbb, 0xbb, 255], // light gray
+  idle: [0xbb, 0xbb, 0xbb, 255], // light gray
+  disconnected: [0x99, 0x99, 0x99, 160], // gray, semi-transparent (hollow feel)
 };
 
-function createFallbackIcon(): Electron.NativeImage {
-  // 16x16 PNG with a simple dark circle (template image for macOS)
-  // Generated as a minimal valid PNG buffer
-  const size = 16;
-  const canvas = Buffer.alloc(size * size * 4, 0);
-  const cx = size / 2;
-  const cy = size / 2;
-  const r = 6;
+function createCircleIcon(
+  rgba: [number, number, number, number],
+): Electron.NativeImage {
+  // 32x32 raw RGBA buffer (renders as 16x16 @2x Retina)
+  const size = 32;
+  const radius = 12;
+  const center = size / 2;
+  const buf = Buffer.alloc(size * size * 4, 0);
+
   for (let y = 0; y < size; y++) {
     for (let x = 0; x < size; x++) {
-      const dx = x - cx + 0.5;
-      const dy = y - cy + 0.5;
-      if (dx * dx + dy * dy <= r * r) {
+      const dx = x - center + 0.5;
+      const dy = y - center + 0.5;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist <= radius) {
+        // Anti-alias the edge
+        const alpha = Math.min(1, radius - dist + 0.5);
         const offset = (y * size + x) * 4;
-        canvas[offset] = 0;     // R
-        canvas[offset + 1] = 0; // G
-        canvas[offset + 2] = 0; // B
-        canvas[offset + 3] = 200; // A
+        buf[offset] = rgba[0];
+        buf[offset + 1] = rgba[1];
+        buf[offset + 2] = rgba[2];
+        buf[offset + 3] = Math.round(rgba[3] * alpha);
       }
     }
   }
-  return nativeImage.createFromBuffer(canvas, { width: size, height: size });
+
+  return nativeImage.createFromBuffer(buf, {
+    width: size,
+    height: size,
+    scaleFactor: 2.0,
+  });
 }
 
-function createTrayIcon(): Electron.NativeImage {
-  const iconPath = join(__dirname, "../public/icon.png");
-  const icon = nativeImage.createFromPath(iconPath);
-  if (!icon.isEmpty()) {
-    return icon.resize({ width: 16, height: 16 });
-  }
-  return createFallbackIcon();
+function getStateIcon(state: string): Electron.NativeImage {
+  const color = STATE_COLORS[state] || STATE_COLORS.disconnected;
+  return createCircleIcon(color);
 }
 
 export function createTray(window: BrowserWindow): Tray {
   mainWindow = window;
 
-  const icon = createTrayIcon();
-  tray = new Tray(icon);
+  tray = new Tray(getStateIcon("disconnected"));
   tray.setToolTip("Local Sidekick");
-
-  // Set title for macOS menu bar (shows text next to icon)
-  tray.setTitle("LS");
 
   const contextMenu = Menu.buildFromTemplate([
     {
@@ -103,7 +104,6 @@ export function createTray(window: BrowserWindow): Tray {
 export function updateTrayIcon(state: string): void {
   if (!tray) return;
 
-  const stateLabel = STATE_ICONS[state] || STATE_ICONS.disconnected;
-  tray.setTitle(stateLabel);
+  tray.setImage(getStateIcon(state));
   tray.setToolTip(`Local Sidekick - ${state}`);
 }

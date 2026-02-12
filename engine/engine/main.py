@@ -48,6 +48,7 @@ logger = logging.getLogger(__name__)
 
 _monitoring_tasks: list[asyncio.Task] = []
 _should_monitor = False
+_paused = False  # True when system is suspended (e.g. lid closed)
 _config: EngineConfig = EngineConfig()
 
 # Latest classification results (updated by background tasks)
@@ -168,8 +169,30 @@ async def _camera_loop() -> None:
     tracker = FeatureTracker()
     last_estimation = 0.0
 
+    camera_open = True
+
     try:
         while _should_monitor:
+            if _paused:
+                # Release camera hardware so the green LED turns off
+                if camera_open:
+                    await asyncio.to_thread(camera.close)
+                    camera_open = False
+                    logger.info("Camera released for system sleep.")
+                await asyncio.sleep(1.0)
+                continue
+
+            # Re-open camera after resume
+            if not camera_open:
+                try:
+                    await asyncio.to_thread(camera.open)
+                    camera_open = True
+                    logger.info("Camera re-opened after resume.")
+                except RuntimeError as e:
+                    logger.warning("Camera re-open failed: %s", e)
+                    await asyncio.sleep(2.0)
+                    continue
+
             try:
                 frame_result = await asyncio.to_thread(camera.read_frame)
             except RuntimeError:
@@ -229,7 +252,8 @@ async def _camera_loop() -> None:
 
             await asyncio.sleep(_config.camera_frame_interval)
     finally:
-        camera.close()
+        if camera_open:
+            camera.close()
 
 
 # --- PC monitoring ---
@@ -256,6 +280,10 @@ async def _pc_monitor_loop() -> None:
 
     try:
         while _should_monitor:
+            if _paused:
+                await asyncio.sleep(1.0)
+                continue
+
             now = time.monotonic()
             if now - last_estimation >= _config.pc_estimation_interval:
                 last_estimation = now
@@ -327,8 +355,17 @@ async def _integration_loop() -> None:
     _notification_engine = _create_notification_engine(_config)
 
     while _should_monitor:
+        if _paused:
+            await asyncio.sleep(1.0)
+            continue
+
         camera_state = _latest_camera_state
         pc_state = _latest_pc_state
+
+        # Skip integration when no data is available yet (e.g. right after resume)
+        if camera_state is None and pc_state is None:
+            await asyncio.sleep(_config.integration_interval)
+            continue
 
         integrated = _integrator.integrate(
             camera_state=camera_state.state if camera_state else None,
@@ -423,6 +460,39 @@ async def start_monitoring() -> None:
     _monitoring_tasks.extend(tasks)
 
 
+async def pause_monitoring() -> None:
+    """Pause monitoring (e.g. system sleep). Loops stay alive but skip work."""
+    global _paused
+
+    if _paused or not _should_monitor:
+        return
+
+    _paused = True
+    set_engine_state("paused", True)
+    logger.info("Monitoring paused (system suspend).")
+
+
+async def resume_monitoring() -> None:
+    """Resume monitoring after pause. Resets consecutive state tracking."""
+    global _paused, _latest_camera_state, _latest_pc_state
+
+    if not _paused:
+        return
+
+    # Reset latest states so stale data from before sleep isn't used
+    _latest_camera_state = None
+    _latest_pc_state = None
+
+    # Reset notification engine consecutive state so sleep duration
+    # doesn't count toward distracted/drowsy thresholds
+    if _notification_engine is not None:
+        _notification_engine.reset_consecutive()
+
+    _paused = False
+    set_engine_state("paused", False)
+    logger.info("Monitoring resumed (system wake).")
+
+
 async def stop_monitoring() -> None:
     """Stop all monitoring background tasks."""
     global _should_monitor, _shared_llm_backend
@@ -502,6 +572,8 @@ async def lifespan(app: FastAPI):
     set_engine_state("history_store", _history_store)
     set_engine_state("start_callback", start_monitoring)
     set_engine_state("stop_callback", stop_monitoring)
+    set_engine_state("pause_callback", pause_monitoring)
+    set_engine_state("resume_callback", resume_monitoring)
     set_engine_state("apply_config_callback", apply_config)
 
     # Auto-download essential models in background on first launch

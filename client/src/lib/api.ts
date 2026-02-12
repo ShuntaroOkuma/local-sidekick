@@ -46,24 +46,34 @@ export const api = {
   // Current state
   getState: (): Promise<EngineState> => request("/api/state"),
 
-  // History (API returns { state_log, notifications, count })
-  getHistory: async (date?: string): Promise<HistoryEntry[]> => {
-    const params = date ? `?date=${date}` : "";
+  // History (API accepts start/end as Unix timestamps)
+  getHistory: async (range?: {
+    start: number;
+    end: number;
+  }): Promise<HistoryEntry[]> => {
+    const params = range
+      ? `?start=${range.start}&end=${range.end}`
+      : "";
     const res = await request<{ state_log: HistoryEntry[] }>(
       `/api/history${params}`
     );
     return res.state_log ?? [];
   },
 
-  // Daily stats
+  // Daily stats (accepts YYYY-MM-DD date string)
   getDailyStats: (date?: string): Promise<DailyStats> => {
     const params = date ? `?date=${date}` : "";
     return request(`/api/daily-stats${params}`);
   },
 
-  // Notifications
-  getNotifications: (date?: string): Promise<NotificationEntry[]> => {
-    const params = date ? `?date=${date}` : "";
+  // Notifications (API accepts start/end as Unix timestamps)
+  getNotifications: async (range?: {
+    start: number;
+    end: number;
+  }): Promise<NotificationEntry[]> => {
+    const params = range
+      ? `?start=${range.start}&end=${range.end}`
+      : "";
     return request(`/api/notifications${params}`);
   },
 

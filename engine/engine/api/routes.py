@@ -9,6 +9,8 @@ Endpoints:
     PUT  /api/settings        -> Update engine settings
     POST /api/engine/start    -> Start monitoring
     POST /api/engine/stop     -> Stop monitoring
+    POST /api/engine/pause    -> Pause monitoring (system sleep)
+    POST /api/engine/resume   -> Resume monitoring (system wake)
 """
 
 from __future__ import annotations
@@ -342,3 +344,37 @@ async def stop_engine() -> EngineActionResponse:
         await callback()
 
     return EngineActionResponse(status="ok", message="Monitoring stopped")
+
+
+@router.post("/engine/pause", response_model=EngineActionResponse)
+async def pause_engine() -> EngineActionResponse:
+    """Pause monitoring (e.g. system sleep).
+
+    Loops stay alive but skip work. No state is recorded to history.
+    """
+    if _engine_state.get("paused"):
+        return EngineActionResponse(status="ok", message="Already paused")
+    if not _engine_state.get("monitoring"):
+        return EngineActionResponse(status="ok", message="Not monitoring")
+
+    callback = _engine_state.get("pause_callback")
+    if callback is not None:
+        await callback()
+
+    return EngineActionResponse(status="ok", message="Monitoring paused")
+
+
+@router.post("/engine/resume", response_model=EngineActionResponse)
+async def resume_engine() -> EngineActionResponse:
+    """Resume monitoring after pause (e.g. system wake).
+
+    Resets stale state and notification timers.
+    """
+    if not _engine_state.get("paused"):
+        return EngineActionResponse(status="ok", message="Not paused")
+
+    callback = _engine_state.get("resume_callback")
+    if callback is not None:
+        await callback()
+
+    return EngineActionResponse(status="ok", message="Monitoring resumed")

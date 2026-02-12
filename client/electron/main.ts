@@ -1,11 +1,18 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, powerMonitor } from "electron";
 import { join } from "path";
 import { createTray, updateTrayIcon } from "./tray";
 import { PythonBridge } from "./python-bridge";
-import { showNotification } from "./notification";
+import { showNotification, setAvatarEnabled, isAvatarEnabled } from "./notification";
 import type { NotificationType } from "./notification";
+import {
+  createAvatarWindow,
+  sendToAvatar,
+  showAvatarWindow,
+  hideAvatarWindow,
+} from "./avatar-window";
 
 let mainWindow: BrowserWindow | null = null;
+let avatarWin: BrowserWindow | null = null;
 let pythonBridge: PythonBridge | null = null;
 let statePollingTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -36,6 +43,14 @@ function createWindow(): BrowserWindow {
     win.hide();
   });
 
+  // Auto-reload if the renderer process dies (e.g. GPU reset after sleep)
+  win.webContents.on("render-process-gone", (_event, details) => {
+    console.log(`Renderer gone (reason: ${details.reason}) – reloading`);
+    if (details.reason !== "clean-exit") {
+      win.webContents.reload();
+    }
+  });
+
   return win;
 }
 
@@ -53,6 +68,9 @@ function startStatePolling(): void {
         // Update tray icon based on state
         updateTrayIcon(state.state);
 
+        // Forward state to avatar window
+        sendToAvatar("avatar-state-update", state);
+
         // Check for notifications
         const notifRes = await fetch(
           `http://localhost:${port}/api/notifications/pending`
@@ -60,6 +78,9 @@ function startStatePolling(): void {
         if (notifRes.ok) {
           const notifications = await notifRes.json();
           for (const notif of notifications) {
+            // Forward notification to avatar window
+            sendToAvatar("avatar-notification", notif);
+
             showNotification(
               notif.type as NotificationType,
               (action: string) => {
@@ -102,6 +123,23 @@ function stopStatePolling(): void {
 app.whenReady().then(async () => {
   mainWindow = createWindow();
 
+  // Create avatar overlay window
+  avatarWin = createAvatarWindow();
+  if (process.env.ELECTRON_RENDERER_URL) {
+    // In dev, replace index.html with avatar.html in the dev server URL
+    const devUrl = process.env.ELECTRON_RENDERER_URL.replace(
+      /\/$/,
+      ""
+    );
+    avatarWin.loadURL(`${devUrl}/src/avatar/avatar.html`);
+  } else {
+    avatarWin.loadFile(join(__dirname, "../dist/src/avatar/avatar.html"));
+  }
+  avatarWin.once("ready-to-show", () => {
+    avatarWin?.show();
+    setAvatarEnabled(true);
+  });
+
   // Create tray
   createTray(mainWindow);
 
@@ -117,6 +155,19 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("get-platform", () => {
     return process.platform;
+  });
+
+  ipcMain.handle("get-avatar-enabled", () => {
+    return isAvatarEnabled();
+  });
+
+  ipcMain.handle("set-avatar-enabled", (_event, enabled: boolean) => {
+    setAvatarEnabled(enabled);
+    if (enabled) {
+      showAvatarWindow();
+    } else {
+      hideAvatarWindow();
+    }
   });
 
   ipcMain.on("notification-response", (_event, data) => {
@@ -136,6 +187,52 @@ app.whenReady().then(async () => {
 
   // Always start polling (works with both spawned and external Engine)
   startStatePolling();
+
+  // Pause/resume monitoring on system sleep/wake and screen lock/unlock
+  const enginePort = () => pythonBridge?.getPort() ?? 18080;
+
+  async function pauseEngine(reason: string): Promise<void> {
+    console.log(`${reason} – pausing engine monitoring`);
+    stopStatePolling();
+    try {
+      const res = await fetch(`http://localhost:${enginePort()}/api/engine/pause`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        console.warn(`Failed to pause engine: ${res.statusText}`);
+      }
+    } catch {
+      console.log("Could not reach engine for pause (may not be running).");
+    }
+  }
+
+  async function resumeEngine(reason: string): Promise<void> {
+    console.log(`${reason} – resuming engine monitoring`);
+    try {
+      const res = await fetch(`http://localhost:${enginePort()}/api/engine/resume`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        console.warn(`Failed to resume engine: ${res.statusText}`);
+      }
+    } catch {
+      console.log("Could not reach engine for resume (may not be running).");
+    }
+
+    // Always restart polling and recover renderer regardless of engine
+    // response — polling retries on its own, and reload fixes GPU context
+    // loss which is independent of the engine state.
+    startStatePolling();
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.reload();
+    }
+  }
+
+  powerMonitor.on("suspend", () => pauseEngine("System suspending"));
+  powerMonitor.on("resume", () => resumeEngine("System resumed"));
+  powerMonitor.on("lock-screen", () => pauseEngine("Screen locked"));
+  powerMonitor.on("unlock-screen", () => resumeEngine("Screen unlocked"));
 });
 
 app.on("window-all-closed", () => {

@@ -18,7 +18,7 @@ macOS Electron アプリ
 
 Google Cloud
   ├── Cloud Run API (FastAPI, JWT認証)
-  ├── Vertex AI Gemini 2.0 Flash (日次レポート生成)
+  ├── Vertex AI Gemini 2.5 Flash (日次レポート生成)
   └── Firestore (ユーザー設定, 統計, レポート)
 ```
 
@@ -106,6 +106,30 @@ USE_MEMORY_STORE=true JWT_SECRET=dev-secret uvicorn server.main:app --port 8081
 # → http://localhost:8081
 ```
 
+### 3a. Server Docker起動（結合テスト推奨）
+
+Cloud Runと同じDockerイメージ + Firestore Emulatorで本番に近い環境をローカルで再現します。
+
+```bash
+cd server
+docker compose up --build
+# → API: http://localhost:8080
+# → Firestore Emulator: http://localhost:8086
+```
+
+Vertex AIはデフォルトでダミーレスポンスを返します。実際のVertex AIを使う場合:
+
+```bash
+gcloud auth application-default login
+GCP_PROJECT_ID=your-project docker compose -f docker-compose.yml -f docker-compose.vertex.yml up --build
+```
+
+停止・クリーンアップ:
+
+```bash
+docker compose down
+```
+
 ### macOS権限設定
 
 - **カメラ**: カメラによる状態推定に必要
@@ -114,30 +138,30 @@ USE_MEMORY_STORE=true JWT_SECRET=dev-secret uvicorn server.main:app --port 8081
 
 ## 主要機能
 
-| 機能 | 説明 |
-|------|------|
+| 機能                 | 説明                                                                           |
+| -------------------- | ------------------------------------------------------------------------------ |
 | リアルタイム状態推定 | カメラ（顔ランドマーク）+ PC利用 → focused / drowsy / distracted / away / idle |
-| 通知3種 | 眠気（120秒連続）、散漫（120秒連続）、過集中（90分中80分集中） |
-| ダッシュボード | リアルタイム状態表示、信頼度バー、今日のサマリー |
-| タイムライン | 時間ごとの状態を色分け表示 |
-| 日次レポート | Vertex AI (Gemini 2.0 Flash) によるAIレポート生成 |
-| 設定同期 | Cloud Run API + JWT認証 + Firestore |
-| プライバシー重視 | 映像はすべてオンデバイス処理、統計のみサーバーに送信 |
+| 通知3種              | 眠気（120秒連続）、散漫（120秒連続）、過集中（90分中80分集中）                 |
+| ダッシュボード       | リアルタイム状態表示、信頼度バー、今日のサマリー                               |
+| タイムライン         | 時間ごとの状態を色分け表示                                                     |
+| 日次レポート         | Vertex AI (Gemini 2.5 Flash) によるAIレポート生成                              |
+| 設定同期             | Cloud Run API + JWT認証 + Firestore                                            |
+| プライバシー重視     | 映像はすべてオンデバイス処理、統計のみサーバーに送信                           |
 
 ## 技術スタック
 
-| レイヤー | 技術 |
-|---------|------|
-| デスクトップ | Electron 34 + React 19 + TypeScript |
-| ビルド | electron-vite + Vite 6 + TailwindCSS 4 |
-| Engine | Python 3.12 + FastAPI + aiosqlite |
-| カメラ | OpenCV + MediaPipe Face Landmarks |
+| レイヤー        | 技術                                          |
+| --------------- | --------------------------------------------- |
+| デスクトップ    | Electron 34 + React 19 + TypeScript           |
+| ビルド          | electron-vite + Vite 6 + TailwindCSS 4        |
+| Engine          | Python 3.12 + FastAPI + aiosqlite             |
+| カメラ          | OpenCV + MediaPipe Face Landmarks             |
 | オンデバイスLLM | llama-cpp-python + Qwen2.5-3B (Q4_K_M, Metal) |
-| PC監視 | pynput + pyobjc |
-| クラウドAPI | Cloud Run + FastAPI |
-| AI | Vertex AI (Gemini 2.0 Flash) |
-| データベース | Firestore（クラウド）+ SQLite（ローカル） |
-| 認証 | JWT (python-jose + passlib) |
+| PC監視          | pynput + pyobjc                               |
+| クラウドAPI     | Cloud Run + FastAPI                           |
+| AI              | Vertex AI (Gemini 2.5 Flash)                  |
+| データベース    | Firestore（クラウド）+ SQLite（ローカル）     |
+| 認証            | JWT (python-jose + passlib)                   |
 
 ## プライバシー設計
 

@@ -8,10 +8,21 @@ export function Settings() {
   const [form, setForm] = useState(settings);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [avatarEnabled, setAvatarEnabled] = useState(true);
 
   useEffect(() => {
     setForm(settings);
   }, [settings]);
+
+  useEffect(() => {
+    window.electronAPI?.getAvatarEnabled().then(setAvatarEnabled);
+  }, []);
+
+  const handleAvatarToggle = async () => {
+    const next = !avatarEnabled;
+    setAvatarEnabled(next);
+    await window.electronAPI?.setAvatarEnabled(next);
+  };
 
   const handleSave = async () => {
     setSaving(true);
@@ -99,6 +110,30 @@ export function Settings() {
             <span className="text-sm text-gray-300 w-8 text-center font-mono">
               {form.max_notifications_per_day}
             </span>
+          </div>
+        </div>
+
+        {/* Avatar toggle */}
+        <div className="bg-gray-800/50 rounded-xl p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-sm font-semibold text-gray-300">アバター</h2>
+              <p className="text-xs text-gray-500 mt-0.5">
+                デスクトップにアバターを表示する
+              </p>
+            </div>
+            <button
+              onClick={handleAvatarToggle}
+              className={`relative w-11 h-6 rounded-full transition-colors ${
+                avatarEnabled ? "bg-blue-600" : "bg-gray-700"
+              }`}
+            >
+              <span
+                className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
+                  avatarEnabled ? "translate-x-5" : ""
+                }`}
+              />
+            </button>
           </div>
         </div>
 
