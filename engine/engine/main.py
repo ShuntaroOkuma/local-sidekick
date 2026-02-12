@@ -455,8 +455,7 @@ async def resume_monitoring() -> None:
     # Reset notification engine consecutive state so sleep duration
     # doesn't count toward distracted/drowsy thresholds
     if _notification_engine is not None:
-        _notification_engine._consecutive_state = None
-        _notification_engine._consecutive_start = 0.0
+        _notification_engine.reset_consecutive()
 
     _paused = False
     set_engine_state("paused", False)

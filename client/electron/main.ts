@@ -191,25 +191,39 @@ app.whenReady().then(async () => {
   // Pause/resume monitoring on system sleep/wake and screen lock/unlock
   const enginePort = () => pythonBridge?.getPort() ?? 18080;
 
-  function pauseEngine(reason: string): void {
+  async function pauseEngine(reason: string): Promise<void> {
     console.log(`${reason} – pausing engine monitoring`);
     stopStatePolling();
-    fetch(`http://localhost:${enginePort()}/api/engine/pause`, {
-      method: "POST",
-    }).catch(() => {});
+    try {
+      const res = await fetch(`http://localhost:${enginePort()}/api/engine/pause`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        console.warn(`Failed to pause engine: ${res.statusText}`);
+      }
+    } catch {
+      console.log("Could not reach engine for pause (may not be running).");
+    }
   }
 
-  function resumeEngine(reason: string): void {
+  async function resumeEngine(reason: string): Promise<void> {
     console.log(`${reason} – resuming engine monitoring`);
-    fetch(`http://localhost:${enginePort()}/api/engine/resume`, {
-      method: "POST",
-    }).catch(() => {});
+    try {
+      const res = await fetch(`http://localhost:${enginePort()}/api/engine/resume`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        console.warn(`Failed to resume engine: ${res.statusText}`);
+      }
+    } catch {
+      console.log("Could not reach engine for resume (may not be running).");
+    }
+
+    // Always restart polling and recover renderer regardless of engine
+    // response — polling retries on its own, and reload fixes GPU context
+    // loss which is independent of the engine state.
     startStatePolling();
 
-    // Recover renderer after sleep/lock — macOS can lose the GPU context
-    // or suspend the renderer, leaving the window blank.
-    // Reload the page to guarantee recovery. React will reconnect WS
-    // and re-fetch data on mount, so no state is lost.
     if (mainWindow && !mainWindow.isDestroyed()) {
       mainWindow.webContents.reload();
     }
