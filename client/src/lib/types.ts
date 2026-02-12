@@ -43,11 +43,25 @@ export interface DailyReport {
   tomorrow_tip: string;
 }
 
+export type ModelTier = "none" | "lightweight" | "recommended";
+
+export interface ModelInfo {
+  id: string;
+  name: string;
+  description: string;
+  size_gb: number;
+  tier: string;
+  downloaded: boolean;
+  downloading: boolean;
+  error: string | null;
+}
+
 export interface Settings {
   working_hours_start: string;
   working_hours_end: string;
   max_notifications_per_day: number;
   camera_enabled: boolean;
+  model_tier: ModelTier;
   sync_enabled: boolean;
 }
 
