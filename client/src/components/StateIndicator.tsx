@@ -53,7 +53,9 @@ export function StateIndicator({
   confidence,
   size = "lg",
 }: StateIndicatorProps) {
-  if (!state) {
+  const config = state ? STATE_CONFIG[state] : undefined;
+
+  if (!state || !config) {
     return (
       <div className="flex flex-col items-center gap-2 p-6">
         <span className="text-6xl animate-pulse">⭕</span>
@@ -61,8 +63,6 @@ export function StateIndicator({
       </div>
     );
   }
-
-  const config = STATE_CONFIG[state];
   const sizeClass = SIZE_CLASSES[size];
 
   return (

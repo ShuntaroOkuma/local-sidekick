@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain } from "electron";
+import { app, BrowserWindow, ipcMain, powerMonitor } from "electron";
 import { join } from "path";
 import { createTray, updateTrayIcon } from "./tray";
 import { PythonBridge } from "./python-bridge";
@@ -41,6 +41,14 @@ function createWindow(): BrowserWindow {
   win.on("close", (event) => {
     event.preventDefault();
     win.hide();
+  });
+
+  // Auto-reload if the renderer process dies (e.g. GPU reset after sleep)
+  win.webContents.on("render-process-gone", (_event, details) => {
+    console.log(`Renderer gone (reason: ${details.reason}) – reloading`);
+    if (details.reason !== "clean-exit") {
+      win.webContents.reload();
+    }
   });
 
   return win;
@@ -179,6 +187,52 @@ app.whenReady().then(async () => {
 
   // Always start polling (works with both spawned and external Engine)
   startStatePolling();
+
+  // Pause/resume monitoring on system sleep/wake and screen lock/unlock
+  const enginePort = () => pythonBridge?.getPort() ?? 18080;
+
+  async function pauseEngine(reason: string): Promise<void> {
+    console.log(`${reason} – pausing engine monitoring`);
+    stopStatePolling();
+    try {
+      const res = await fetch(`http://localhost:${enginePort()}/api/engine/pause`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        console.warn(`Failed to pause engine: ${res.statusText}`);
+      }
+    } catch {
+      console.log("Could not reach engine for pause (may not be running).");
+    }
+  }
+
+  async function resumeEngine(reason: string): Promise<void> {
+    console.log(`${reason} – resuming engine monitoring`);
+    try {
+      const res = await fetch(`http://localhost:${enginePort()}/api/engine/resume`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        console.warn(`Failed to resume engine: ${res.statusText}`);
+      }
+    } catch {
+      console.log("Could not reach engine for resume (may not be running).");
+    }
+
+    // Always restart polling and recover renderer regardless of engine
+    // response — polling retries on its own, and reload fixes GPU context
+    // loss which is independent of the engine state.
+    startStatePolling();
+
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.reload();
+    }
+  }
+
+  powerMonitor.on("suspend", () => pauseEngine("System suspending"));
+  powerMonitor.on("resume", () => resumeEngine("System resumed"));
+  powerMonitor.on("lock-screen", () => pauseEngine("Screen locked"));
+  powerMonitor.on("unlock-screen", () => resumeEngine("Screen unlocked"));
 });
 
 app.on("window-all-closed", () => {

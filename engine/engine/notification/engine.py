@@ -196,6 +196,15 @@ class NotificationEngine:
 
         return None
 
+    def reset_consecutive(self) -> None:
+        """Reset consecutive state tracking (e.g. after system resume).
+
+        Prevents sleep/pause duration from counting toward
+        distracted or drowsy notification thresholds.
+        """
+        self._consecutive_state = None
+        self._consecutive_start = 0.0
+
     def record_user_action(
         self,
         notification_index: int,
