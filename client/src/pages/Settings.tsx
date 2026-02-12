@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useSettings } from "../hooks/useSettings";
+import { CameraSection } from "../components/CameraSection";
 import { ModelSection } from "../components/ModelSection";
 
 export function Settings() {
@@ -101,33 +102,14 @@ export function Settings() {
           </div>
         </div>
 
-        {/* Toggles */}
-        <div className="bg-gray-800/50 rounded-xl p-5 space-y-4">
-          {/* Camera toggle */}
-          <div className="flex items-center justify-between">
-            <div>
-              <h2 className="text-sm font-semibold text-gray-300">カメラ</h2>
-              <p className="text-xs text-gray-500 mt-0.5">
-                カメラによる状態検知を有効にする
-              </p>
-            </div>
-            <button
-              onClick={() =>
-                setForm({ ...form, camera_enabled: !form.camera_enabled })
-              }
-              className={`relative w-11 h-6 rounded-full transition-colors ${
-                form.camera_enabled ? "bg-blue-600" : "bg-gray-700"
-              }`}
-            >
-              <span
-                className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
-                  form.camera_enabled ? "translate-x-5" : ""
-                }`}
-              />
-            </button>
-          </div>
+        {/* Camera settings */}
+        <CameraSection
+          enabled={form.camera_enabled}
+          onToggle={(enabled) => setForm({ ...form, camera_enabled: enabled })}
+        />
 
-          {/* Sync toggle */}
+        {/* Sync toggle */}
+        <div className="bg-gray-800/50 rounded-xl p-5">
           <div className="flex items-center justify-between">
             <div>
               <h2 className="text-sm font-semibold text-gray-300">

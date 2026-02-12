@@ -97,14 +97,16 @@ export function ModelSection({ currentTier, onTierChange }: ModelSectionProps) {
         </div>
       ) : (
         <div className="space-y-2">
-          {models.map((model) => (
-            <ModelCard
-              key={model.id}
-              model={model}
-              onDownload={startDownload}
-              onDelete={removeModel}
-            />
-          ))}
+          {models
+            .filter((model) => model.tier !== "vision")
+            .map((model) => (
+              <ModelCard
+                key={model.id}
+                model={model}
+                onDownload={startDownload}
+                onDelete={removeModel}
+              />
+            ))}
         </div>
       )}
     </div>
