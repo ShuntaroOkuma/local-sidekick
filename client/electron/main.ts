@@ -6,7 +6,6 @@ import { showNotification, setAvatarEnabled } from "./notification";
 import type { NotificationType } from "./notification";
 import {
   createAvatarWindow,
-  getAvatarWindow,
   sendToAvatar,
 } from "./avatar-window";
 
@@ -124,7 +123,7 @@ app.whenReady().then(async () => {
     );
     avatarWin.loadURL(`${devUrl}/src/avatar/avatar.html`);
   } else {
-    avatarWin.loadFile(join(__dirname, "../dist/avatar.html"));
+    avatarWin.loadFile(join(__dirname, "../dist/src/avatar/avatar.html"));
   }
   avatarWin.once("ready-to-show", () => {
     avatarWin?.show();
@@ -151,17 +150,6 @@ app.whenReady().then(async () => {
   ipcMain.on("notification-response", (_event, data) => {
     const { type, action } = data;
     console.log(`Notification response: ${type} -> ${action}`);
-  });
-
-  ipcMain.on("avatar-toggle", () => {
-    const win = getAvatarWindow();
-    if (win) {
-      if (win.isVisible()) {
-        win.hide();
-      } else {
-        win.show();
-      }
-    }
   });
 
   // Start Python Engine
