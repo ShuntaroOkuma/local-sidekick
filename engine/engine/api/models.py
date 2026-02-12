@@ -10,11 +10,14 @@ Endpoints:
 from __future__ import annotations
 
 import logging
+import ssl
 import threading
 import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
+
+import certifi
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
@@ -170,7 +173,10 @@ def _download_face_landmarker() -> None:
     """Download MediaPipe FaceLandmarker model."""
     target = MODELS_DIR / _FACE_LANDMARKER_FILENAME
     if not target.exists():
-        urllib.request.urlretrieve(_FACE_LANDMARKER_URL, str(target))
+        ssl_context = ssl.create_default_context(cafile=certifi.where())
+        req = urllib.request.Request(_FACE_LANDMARKER_URL)
+        with urllib.request.urlopen(req, context=ssl_context) as resp:
+            target.write_bytes(resp.read())
 
 
 def _download_worker(model_id: str) -> None:
