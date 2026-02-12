@@ -22,7 +22,7 @@ export function createAvatarWindow(): BrowserWindow {
   });
 
   win.setAlwaysOnTop(true, "floating");
-  win.setVisibleOnAllWorkspaces(true);
+  win.setVisibleOnAllWorkspaces(true, { visibleOnFullScreen: true });
   win.setIgnoreMouseEvents(true, { forward: true });
 
   // Position at bottom-right of primary display

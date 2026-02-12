@@ -1,74 +1,16 @@
-import { useState, useEffect, useRef } from "react";
 import { AvatarCharacter } from "./AvatarCharacter";
-import type { AvatarMode, EngineUserState } from "./avatar-state-machine";
-import {
-  engineStateToAvatarMode,
-  createStateDebouncer,
-} from "./avatar-state-machine";
+import { useAvatarState } from "./useAvatarState";
 import "./avatar.css";
 
-interface AvatarAPI {
-  getEngineUrl: () => Promise<string>;
-  onStateUpdate: (callback: (data: { state: EngineUserState }) => void) => () => void;
-  onNotification: (
-    callback: (data: { type: string; message?: string }) => void,
-  ) => () => void;
-}
-
-declare global {
-  interface Window {
-    avatarAPI?: AvatarAPI;
-  }
-}
-
 export const AvatarApp: React.FC = () => {
-  const [mode, setMode] = useState<AvatarMode>("hidden");
-  const [notification, setNotification] = useState<string | null>(null);
-  const notificationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  useEffect(() => {
-    const debouncer = createStateDebouncer(1000);
-
-    // Listen for state updates from main process
-    const cleanupState = window.avatarAPI?.onStateUpdate((data) => {
-      const engineState = data?.state;
-      if (engineState) {
-        const newMode = engineStateToAvatarMode(engineState);
-        debouncer.update(newMode, setMode);
-      }
-    });
-
-    // Listen for notifications (e.g. over_focus triggers stretch)
-    const cleanupNotif = window.avatarAPI?.onNotification((data) => {
-      if (data?.type === "over_focus") {
-        setMode("stretch");
-      }
-      if (data?.message) {
-        setNotification(data.message);
-        if (notificationTimerRef.current) {
-          clearTimeout(notificationTimerRef.current);
-        }
-        notificationTimerRef.current = setTimeout(() => {
-          setNotification(null);
-          notificationTimerRef.current = null;
-        }, 5000);
-      }
-    });
-
-    return () => {
-      cleanupState?.();
-      cleanupNotif?.();
-      debouncer.cancel();
-      if (notificationTimerRef.current) {
-        clearTimeout(notificationTimerRef.current);
-      }
-    };
-  }, []);
+  const { mode, notification } = useAvatarState();
 
   return (
     <div className="avatar-root">
       <AvatarCharacter mode={mode} />
-      {notification && <div className="avatar-notification">{notification}</div>}
+      {notification && (
+        <div className="avatar-notification">{notification.message}</div>
+      )}
     </div>
   );
 };
