@@ -280,16 +280,97 @@ curl -s $BASE/api/settings/ | python3 -m json.tool --no-ensure-ascii
 
 ---
 
-## 4. 結合テスト（Engine + Client）
+## 4. アバター機能テスト（Mock Engine）
 
-### 4.1 手順
+カメラやPC監視なしでアバターの動作を確認するためのモックエンジンを用意しています。
+
+### 4.1 セットアップ
+
+```bash
+# FastAPI + uvicorn が必要（engine の venv を流用可能）
+cd engine && source .venv/bin/activate
+```
+
+### 4.2 Mock Engine 起動
+
+```bash
+python ../tools/mock_engine.py
+# → http://localhost:18080 で起動
+```
+
+Mock Engine は本物の Engine と同じポート・エンドポイントを提供しますが、状態遷移を手動で制御できます。
+
+### 4.3 Client 起動
+
+別ターミナルで:
+
+```bash
+cd client && npm run dev
+```
+
+### 4.4 アバター動作確認
+
+curlで状態を切り替え、アバターの反応を確認します:
+
+```bash
+# 状態変更（focused / drowsy / distracted / away / idle）
+curl -X POST http://localhost:18080/test/state/idle
+# → アバターがピョコッと覗き込む（peek）
+
+curl -X POST http://localhost:18080/test/state/focused
+# → アバターが退場して非表示に（retreat → hidden）
+
+curl -X POST http://localhost:18080/test/state/drowsy
+# → アバターがうとうと（dozing + ZZZ）
+
+curl -X POST http://localhost:18080/test/state/distracted
+# → アバターが跳ねて注意喚起（wake-up bounce）
+
+curl -X POST http://localhost:18080/test/state/away
+# → アバターが覗き込み（peek）
+```
+
+通知テスト:
+
+```bash
+# 通知送信（drowsy / distracted / over_focus）
+curl -X POST http://localhost:18080/test/notification/drowsy
+# → アバター上に吹き出し「眠気が来ています！立ちましょう」
+
+curl -X POST http://localhost:18080/test/notification/distracted
+# → 吹き出し「集中が途切れています」
+
+curl -X POST http://localhost:18080/test/notification/over_focus
+# → 吹き出し「休憩しませんか？」
+```
+
+### 4.5 チェックリスト
+
+| # | 項目 | 期待動作 |
+|---|------|---------|
+| 1 | アバター初期表示 | アプリ起動後、画面右下にキャラクター表示 |
+| 2 | idle → peek | ピョコッとスライドイン |
+| 3 | focused → hidden | 退場アニメーション後に非表示 |
+| 4 | drowsy → dozing | ゆっくり呼吸 + ZZZ表示 |
+| 5 | distracted → wake-up | バウンドアニメーション |
+| 6 | 通知 → 吹き出し | メッセージが5秒間表示されて自動消去 |
+| 7 | 全画面アプリ上表示 | VSCode等の全画面上にも表示される |
+| 8 | Settings → アバターOFF | トグルOFFでアバター非表示 |
+| 9 | Settings → アバターON | トグルONでアバター再表示 |
+| 10 | アバターOFF時の通知 | OS通知（macOS Notification Center）に切り替わる |
+
+---
+
+## 5. 結合テスト（Engine + Client）
+
+### 5.1 手順
 
 1. Engine起動: `cd engine && source .venv/bin/activate && python -m engine.main`
 2. Client起動: `cd client && npm run dev`
 3. メニューバーのトレイアイコンをクリックしてDashboard表示
 4. Dashboardに現在の状態がリアルタイム表示されることを確認
 
-### 4.2 シナリオテスト
+### 5.2 シナリオテスト
 
 | シナリオ | 操作 | 期待結果 |
 |---------|------|---------|
@@ -301,7 +382,7 @@ curl -s $BASE/api/settings/ | python3 -m json.tool --no-ensure-ascii
 
 ---
 
-## 5. 自動テスト結果サマリー (2026-02-11)
+## 6. 自動テスト結果サマリー (2026-02-11)
 
 ### Engine
 | テスト | 結果 |

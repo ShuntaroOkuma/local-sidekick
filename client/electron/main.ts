@@ -2,10 +2,17 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import { join } from "path";
 import { createTray, updateTrayIcon } from "./tray";
 import { PythonBridge } from "./python-bridge";
-import { showNotification } from "./notification";
+import { showNotification, setAvatarEnabled, isAvatarEnabled } from "./notification";
 import type { NotificationType } from "./notification";
+import {
+  createAvatarWindow,
+  sendToAvatar,
+  showAvatarWindow,
+  hideAvatarWindow,
+} from "./avatar-window";
 
 let mainWindow: BrowserWindow | null = null;
+let avatarWin: BrowserWindow | null = null;
 let pythonBridge: PythonBridge | null = null;
 let statePollingTimeout: ReturnType<typeof setTimeout> | null = null;
 
@@ -53,6 +60,9 @@ function startStatePolling(): void {
         // Update tray icon based on state
         updateTrayIcon(state.state);
 
+        // Forward state to avatar window
+        sendToAvatar("avatar-state-update", state);
+
         // Check for notifications
         const notifRes = await fetch(
           `http://localhost:${port}/api/notifications/pending`
@@ -60,6 +70,9 @@ function startStatePolling(): void {
         if (notifRes.ok) {
           const notifications = await notifRes.json();
           for (const notif of notifications) {
+            // Forward notification to avatar window
+            sendToAvatar("avatar-notification", notif);
+
             showNotification(
               notif.type as NotificationType,
               (action: string) => {
@@ -102,6 +115,23 @@ function stopStatePolling(): void {
 app.whenReady().then(async () => {
   mainWindow = createWindow();
 
+  // Create avatar overlay window
+  avatarWin = createAvatarWindow();
+  if (process.env.ELECTRON_RENDERER_URL) {
+    // In dev, replace index.html with avatar.html in the dev server URL
+    const devUrl = process.env.ELECTRON_RENDERER_URL.replace(
+      /\/$/,
+      ""
+    );
+    avatarWin.loadURL(`${devUrl}/src/avatar/avatar.html`);
+  } else {
+    avatarWin.loadFile(join(__dirname, "../dist/src/avatar/avatar.html"));
+  }
+  avatarWin.once("ready-to-show", () => {
+    avatarWin?.show();
+    setAvatarEnabled(true);
+  });
+
   // Create tray
   createTray(mainWindow);
 
@@ -117,6 +147,19 @@ app.whenReady().then(async () => {
 
   ipcMain.handle("get-platform", () => {
     return process.platform;
+  });
+
+  ipcMain.handle("get-avatar-enabled", () => {
+    return isAvatarEnabled();
+  });
+
+  ipcMain.handle("set-avatar-enabled", (_event, enabled: boolean) => {
+    setAvatarEnabled(enabled);
+    if (enabled) {
+      showAvatarWindow();
+    } else {
+      hideAvatarWindow();
+    }
   });
 
   ipcMain.on("notification-response", (_event, data) => {
