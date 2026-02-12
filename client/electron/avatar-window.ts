@@ -13,7 +13,6 @@ export function createAvatarWindow(): BrowserWindow {
     hasShadow: false,
     skipTaskbar: true,
     alwaysOnTop: true,
-    visibleOnAllWorkspaces: true,
     show: false,
     webPreferences: {
       preload: join(__dirname, "preload-avatar.js"),
@@ -23,6 +22,7 @@ export function createAvatarWindow(): BrowserWindow {
   });
 
   win.setAlwaysOnTop(true, "floating");
+  win.setVisibleOnAllWorkspaces(true);
   win.setIgnoreMouseEvents(true, { forward: true });
 
   // Position at bottom-right of primary display

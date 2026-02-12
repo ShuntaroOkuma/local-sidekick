@@ -2,7 +2,7 @@ import { app, BrowserWindow, ipcMain } from "electron";
 import { join } from "path";
 import { createTray, updateTrayIcon } from "./tray";
 import { PythonBridge } from "./python-bridge";
-import { showNotification } from "./notification";
+import { showNotification, setAvatarEnabled } from "./notification";
 import type { NotificationType } from "./notification";
 import {
   createAvatarWindow,
@@ -128,6 +128,7 @@ app.whenReady().then(async () => {
   }
   avatarWin.once("ready-to-show", () => {
     avatarWin?.show();
+    setAvatarEnabled(true);
   });
 
   // Create tray

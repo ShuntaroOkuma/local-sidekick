@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { AvatarCharacter } from "./AvatarCharacter";
 import type { AvatarMode, EngineUserState } from "./avatar-state-machine";
 import {
@@ -24,6 +24,7 @@ declare global {
 export const AvatarApp: React.FC = () => {
   const [mode, setMode] = useState<AvatarMode>("hidden");
   const [notification, setNotification] = useState<string | null>(null);
+  const notificationTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const debouncer = createStateDebouncer(1000);
@@ -44,13 +45,23 @@ export const AvatarApp: React.FC = () => {
       }
       if (data?.message) {
         setNotification(data.message);
-        setTimeout(() => setNotification(null), 5000);
+        if (notificationTimerRef.current) {
+          clearTimeout(notificationTimerRef.current);
+        }
+        notificationTimerRef.current = setTimeout(() => {
+          setNotification(null);
+          notificationTimerRef.current = null;
+        }, 5000);
       }
     });
 
     return () => {
       cleanupState?.();
       cleanupNotif?.();
+      debouncer.cancel();
+      if (notificationTimerRef.current) {
+        clearTimeout(notificationTimerRef.current);
+      }
     };
   }, []);
 

@@ -1,11 +1,9 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-import type { AvatarMode } from "./avatar-state-machine";
+import type { AvatarMode, EngineUserState } from "./avatar-state-machine";
 import {
   engineStateToAvatarMode,
   createStateDebouncer,
 } from "./avatar-state-machine";
-
-type EngineUserState = "focused" | "drowsy" | "distracted" | "away" | "idle";
 
 interface AvatarNotification {
   type: string;
