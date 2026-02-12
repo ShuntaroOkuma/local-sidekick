@@ -58,6 +58,8 @@ export interface ElectronAPI {
   getAppVersion: () => Promise<string>;
   getPlatform: () => Promise<string>;
   onNavigate: (callback: (path: string) => void) => () => void;
+  getAvatarEnabled: () => Promise<boolean>;
+  setAvatarEnabled: (enabled: boolean) => Promise<void>;
 }
 
 declare global {

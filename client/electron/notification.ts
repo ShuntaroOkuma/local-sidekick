@@ -1,5 +1,15 @@
 import { Notification } from "electron";
 
+let avatarEnabled = false;
+
+export function setAvatarEnabled(enabled: boolean): void {
+  avatarEnabled = enabled;
+}
+
+export function isAvatarEnabled(): boolean {
+  return avatarEnabled;
+}
+
 export type NotificationType = "drowsy" | "distracted" | "over_focus";
 
 interface NotificationConfig {
@@ -26,6 +36,10 @@ export function showNotification(
   type: NotificationType,
   onAction?: (action: string) => void
 ): void {
+  // When avatar mode is active, skip OS notifications;
+  // the avatar window handles them via WebSocket/IPC instead.
+  if (avatarEnabled) return;
+
   const config = NOTIFICATION_CONFIGS[type];
   if (!config) return;
 
