@@ -67,8 +67,12 @@ async def _get_shared_llm(config: EngineConfig):
 
     Uses _llm_lock to prevent concurrent initialization which could
     load the model (2-5GB) into memory twice.
+    Returns None immediately when model_tier is "none" (rule-only mode).
     """
     global _shared_llm_backend
+
+    if config.model_tier == "none":
+        return None
 
     if _shared_llm_backend is not None:
         return _shared_llm_backend
@@ -460,8 +464,11 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+from engine.api.models import router as models_router
+
 app.include_router(api_router)
 app.include_router(ws_router)
+app.include_router(models_router)
 
 
 def main() -> None:

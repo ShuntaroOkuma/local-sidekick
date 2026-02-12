@@ -7,6 +7,7 @@ const DEFAULT_SETTINGS: Settings = {
   working_hours_end: "19:00",
   max_notifications_per_day: 6,
   camera_enabled: true,
+  model_tier: "lightweight",
   sync_enabled: true,
 };
 

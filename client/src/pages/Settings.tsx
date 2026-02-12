@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useSettings } from "../hooks/useSettings";
+import { ModelSection } from "../components/ModelSection";
 
 export function Settings() {
   const { settings, loading, error, updateSettings } = useSettings();
@@ -152,6 +153,12 @@ export function Settings() {
             </button>
           </div>
         </div>
+
+        {/* AI Model settings */}
+        <ModelSection
+          currentTier={form.model_tier ?? "lightweight"}
+          onTierChange={(tier) => setForm({ ...form, model_tier: tier })}
+        />
       </div>
 
       {/* Save button */}

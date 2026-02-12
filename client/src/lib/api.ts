@@ -4,6 +4,7 @@ import type {
   DailyStats,
   Settings,
   NotificationEntry,
+  ModelInfo,
 } from "./types";
 
 const DEFAULT_BASE_URL = "http://localhost:18080";
@@ -89,4 +90,13 @@ export const api = {
 
   stopEngine: (): Promise<{ status: string }> =>
     request("/api/engine/stop", { method: "POST" }),
+
+  // Model management
+  getModels: (): Promise<ModelInfo[]> => request("/api/models"),
+
+  downloadModel: (modelId: string): Promise<{ status: string; message: string }> =>
+    request(`/api/models/${modelId}/download`, { method: "POST" }),
+
+  deleteModel: (modelId: string): Promise<{ status: string; message: string }> =>
+    request(`/api/models/${modelId}`, { method: "DELETE" }),
 };
