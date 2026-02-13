@@ -84,6 +84,9 @@ class EngineConfig:
     # Server settings
     engine_port: int = 18080
     sync_enabled: bool = False
+    cloud_run_url: str = ""
+    cloud_auth_token: str = ""
+    cloud_auth_email: str = ""
 
     def to_dict(self) -> dict:
         """Convert to a plain dict for JSON serialization."""
