@@ -62,9 +62,7 @@ local-sidekick/
 ├── poc/                      # Proof of Concept (reference, not modified)
 ├── docs/
 │   ├── architecture.md       # Detailed MVP design
-│   ├── requirements.md       # Product requirements
-│   ├── manual-testing.md     # Verification procedures
-│   └── poc-plan.md           # PoC experiment plan
+│   └── manual-testing.md     # Verification procedures
 └── README.md
 ```
 
@@ -324,10 +322,8 @@ curl -s $SERVICE_URL/api/health
 
 ## Documentation
 
-- [Product Requirements](docs/requirements.md)
 - [Architecture & Design](docs/architecture.md)
 - [Manual Testing Guide](docs/manual-testing.md)
-- [PoC Experiment Plan](docs/poc-plan.md)
 
 ## License
 

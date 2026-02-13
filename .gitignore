@@ -23,3 +23,14 @@ engine/models/*.task
 .cache/
 client/build-engine/
 client/release/
+
+# Local databases
+*.db
+*.sqlite3
+
+# Internal planning docs (removed from history)
+docs/poc-plan.md
+docs/avatar-poc-plan.md
+docs/unified-estimation-plan.md
+docs/plan-report-gcp-integration.md
+docs/requirements.md

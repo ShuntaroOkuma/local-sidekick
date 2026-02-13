@@ -8,6 +8,7 @@
 macOS Electron アプリ
   ├── Main Process (トレイ, 通知, Python Bridge)
   ├── Renderer (React: Dashboard, Timeline, Report, Settings)
+  ├── Avatar Overlay (透明BrowserWindow, CSSキャラクター)
   └── Python Engine (FastAPI @ localhost:18080)
         ├── カメラパイプライン (MediaPipe 顔ランドマーク)
         ├── PC利用状況モニター (pynput + pyobjc)
@@ -27,11 +28,12 @@ Google Cloud
 ```
 local-sidekick/
 ├── client/                   # Electron + React アプリ
-│   ├── electron/             # Main Process (tray, preload, python-bridge, notification)
+│   ├── electron/             # Main Process (tray, preload, python-bridge, notification, avatar-window)
 │   ├── src/                  # React Renderer
 │   │   ├── pages/            # Dashboard, Timeline, Report, Settings
 │   │   ├── components/       # StateIndicator, TimelineChart 等
 │   │   ├── hooks/            # useEngineState, useSettings
+│   │   ├── avatar/           # アバターオーバーレイ (キャラクター, ステートマシン, アニメーション)
 │   │   └── lib/              # APIクライアント, 型定義
 │   └── package.json
 ├── engine/                   # Python ローカルバックエンド
@@ -55,12 +57,12 @@ local-sidekick/
 │   │   └── main.py           # FastAPI エントリポイント
 │   ├── Dockerfile
 │   └── pyproject.toml
+├── tools/                    # 開発・テストユーティリティ
+│   └── mock_engine.py        # アバターテスト用モックEngine (WebSocket + REST)
 ├── poc/                      # 概念実証（参照用、変更しない）
 ├── docs/
 │   ├── architecture.md       # MVP設計書
-│   ├── requirements.md       # 企画・仕様
-│   ├── manual-testing.md     # 動作確認手順
-│   └── poc-plan.md           # PoC実験計画
+│   └── manual-testing.md     # 動作確認手順
 └── README.md
 ```
 
@@ -146,7 +148,34 @@ docker compose down
 | タイムライン         | 時間ごとの状態を色分け表示                                                     |
 | 日次レポート         | Vertex AI (Gemini 2.5 Flash) によるAIレポート生成                              |
 | 設定同期             | Cloud Run API + JWT認証 + Firestore                                            |
+| デスクトップアバター | 常に最前面に表示されるアニメキャラクターがリアルタイムで状態に反応             |
 | プライバシー重視     | 映像はすべてオンデバイス処理、統計のみサーバーに送信                           |
+
+## アバターオーバーレイ
+
+デスクトップに常駐する小さなアニメキャラクターが、あなたの状態にリアルタイムで反応します。
+
+### 仕組み
+
+- メインアプリとは別の透明な常時最前面 `BrowserWindow` で動作
+- Engine WebSocket (`/ws/state`) に直接接続し、状態・通知をリアルタイム取得
+- デバウンス付きステートマシンでEngine状態をアバターアニメーションに変換
+
+### アバターモード
+
+| Engine状態   | アバターモード | 動作                                         |
+| ------------ | -------------- | -------------------------------------------- |
+| focused      | hidden         | キャラクターが退避して非表示（集中中）       |
+| idle         | peek           | 横からひょっこり覗く                         |
+| drowsy       | dozing         | ゆっくり呼吸アニメーション + ZZZエフェクト   |
+| distracted   | wake-up        | バウンスして注意を引く                       |
+| away         | peek           | 覗いて戻りを待つ                             |
+
+Engineからの通知（眠気・散漫・過集中）は、アバターが有効な間はOS通知の代わりにキャラクター上の吹き出しとして表示されます。
+
+### 設定
+
+アバターは **設定 > アバター** からON/OFFを切り替えられます。OFFにするとアバターウィンドウが非表示になり、OS標準通知にフォールバックします。
 
 ## 技術スタック
 
@@ -170,14 +199,138 @@ docker compose down
 - スクリーンキャプチャなし
 - サーバーへ送るのは集計統計のみ
 - カメラは設定画面でOFFにできる
+- アバターは設定画面でOFFにできる
+
+## セキュリティに関する注意
+
+- Cloud Run認証トークン（JWT）は `~/.local-sidekick/config.json` にプレーンテキストで保存されます
+- 本実装はハッカソンデモ用の暫定実装です。本番運用ではシステムキーチェーン等の安全なストレージに移行が必要です
+- `config.json` をバージョン管理に含めないでください（`.gitignore` で除外済み）
+
+## GCP デプロイ（Cloud Run）
+
+### 前提条件
+
+```bash
+gcloud auth login
+
+# 以降の手順で使用する環境変数を設定
+export PROJECT_ID=your-project-id
+export REGION=asia-northeast1
+
+gcloud config set project $PROJECT_ID
+
+# 必要な API を有効化
+gcloud services enable \
+  run.googleapis.com \
+  cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com \
+  aiplatform.googleapis.com \
+  firestore.googleapis.com
+```
+
+### IAM 権限設定（初回のみ）
+
+```bash
+PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
+
+# Cloud Build がソースを GCS にアップロードするための権限
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/storage.admin"
+
+# Cloud Build が Docker イメージを Artifact Registry に push するための権限
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/artifactregistry.writer"
+
+# Cloud Build が Cloud Run にデプロイするための権限
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/run.admin"
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountUser"
+
+# Cloud Run から Vertex AI を呼び出すための権限
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/aiplatform.user"
+
+# Cloud Run から Firestore にアクセスするための権限
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/datastore.user"
+```
+
+### Artifact Registry リポジトリ作成（初回のみ）
+
+```bash
+gcloud artifacts repositories create local-sidekick \
+  --repository-format=docker \
+  --location=$REGION
+```
+
+### Firestore データベース作成（初回のみ）
+
+```bash
+gcloud firestore databases create --location=$REGION
+```
+
+### デプロイ
+
+```bash
+# リポジトリルートから実行（Dockerfile が server/ を COPY するため）
+gcloud builds submit \
+  --config=server/deploy/cloudbuild.yaml \
+  --project=$PROJECT_ID \
+  .
+```
+
+### 環境変数の設定
+
+```bash
+# JWT_SECRET を生成
+export JWT_SECRET=$(openssl rand -base64 32)
+
+gcloud run services update local-sidekick-api \
+  --region=$REGION \
+  --set-env-vars="GCP_PROJECT_ID=$PROJECT_ID,GCP_LOCATION=$REGION,JWT_SECRET=$JWT_SECRET,ENV=production"
+```
+
+### デプロイ確認
+
+```bash
+# Cloud Run の URL を取得
+SERVICE_URL=$(gcloud run services describe local-sidekick-api \
+  --region=$REGION \
+  --format='value(status.url)')
+
+# ヘルスチェック
+curl -s $SERVICE_URL/api/health
+# → {"status": "ok", "service": "local-sidekick-api"}
+```
+
+### アプリから接続
+
+1. Engine + Client を起動
+2. Settings → サーバ同期 ON
+3. Cloud Run URL に `$SERVICE_URL` を入力して保存
+4. メール/パスワードでログインまたは新規登録
+5. Report タブでレポート生成 → Vertex AI の AI レポートが返る
+
+### 注意事項
+
+- リージョン: デフォルト `asia-northeast1`（東京）。`$REGION` で変更可能
+- `--allow-unauthenticated` で公開設定（アプリレベルで JWT 認証）
+- 初回リクエストはコールドスタートで 10-30 秒かかる（Engine 側タイムアウト 60 秒）
+- Cloud Run / Vertex AI ともに従量課金（リクエストがなければほぼ無料）
 
 ## ドキュメント
 
-- [企画・仕様書](docs/requirements.md)
 - [MVP設計書](docs/architecture.md)
 - [動作確認手順](docs/manual-testing.md)
-- [PoC実験計画](docs/poc-plan.md)
 
 ## ライセンス
 
-Private - Google Cloud Japan AI Hackathon Vol.4
+MIT License. 詳細は [LICENSE](LICENSE) ファイルを参照してください。
