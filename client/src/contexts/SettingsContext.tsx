@@ -69,7 +69,8 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
           setError(null);
           setLoading(false);
         }
-      } catch {
+      } catch (err) {
+        console.warn(`Failed to fetch settings (attempt ${attempt}):`, err);
         if (!cancelled && attempt < 5) {
           // Engine may still be starting — retry with backoff
           retryTimer = setTimeout(() => fetchWithRetry(attempt + 1), 2000 * attempt);

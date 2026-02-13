@@ -18,7 +18,8 @@ function readAvatarEnabledFromConfig(): boolean {
     const configPath = join(app.getPath("home"), ".local-sidekick", "config.json");
     const data = JSON.parse(readFileSync(configPath, "utf-8"));
     return data.avatar_enabled !== false; // default true
-  } catch {
+  } catch (err) {
+    console.warn("Failed to read avatar config, using default:", err);
     return true;
   }
 }
@@ -191,8 +192,9 @@ app.whenReady().then(async () => {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ avatar_enabled: enabled }),
       });
-    } catch {
+    } catch (err) {
       // Engine may not be running yet; the save button in Settings will also persist
+      console.warn("Failed to persist avatar setting to engine:", err);
     }
   });
 
