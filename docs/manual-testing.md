@@ -72,7 +72,7 @@ Electronウィンドウが自動で開きます。
 | # | 確認内容 | 期待動作 |
 |---|---------|---------|
 | 1 | 接続状態 | 左上に緑色のドット（Engine接続済み） |
-| 2 | 状態表示 | 中央の円形インジケーターに現在の状態（focused / drowsy / distracted / away / idle）と信頼度（%）が表示される |
+| 2 | 状態表示 | 中央の円形インジケーターに現在の状態（focused / drowsy / distracted / away）と信頼度（%）が表示される |
 | 3 | サブ状態 | インジケーター下に Camera State / PC State が表示される（統合推定後はnull表示も正常） |
 | 4 | 今日のサマリー | 集中・眠気・散漫の各分数が表示される |
 | 5 | 最近の通知 | 通知が発生していれば一覧表示される |
@@ -95,7 +95,7 @@ Electronウィンドウが自動で開きます。
 | # | 確認内容 | 期待動作 |
 |---|---------|---------|
 | 1 | 日付ナビゲーション | 左右矢印で前日/翌日に移動できる。未来日には進めない |
-| 2 | タイムライン表示 | 稼働時間帯にカラーバーが表示される（緑=focused, 黄=distracted, 赤=drowsy, 灰=away/idle） |
+| 2 | タイムライン表示 | 稼働時間帯にカラーバーが表示される（緑=focused, 黄=distracted, 赤=drowsy, 灰=away） |
 | 3 | 通知ログ | その日の通知が時刻・種類・メッセージとともに一覧表示される |
 | 4 | データなし | 過去日で記録がなければ「No data yet」と表示される |
 
@@ -243,9 +243,6 @@ cd client && npm run dev
 ### 状態切り替え
 
 ```bash
-# idle: アバターがピョコッと覗き込む
-curl -X POST http://localhost:18080/test/state/idle
-
 # focused: アバターが退場して非表示になる
 curl -X POST http://localhost:18080/test/state/focused
 
@@ -277,15 +274,14 @@ curl -X POST http://localhost:18080/test/notification/over_focus
 | # | 項目 | 期待動作 |
 |---|------|---------|
 | 1 | 初期表示 | 画面右下にキャラクターが表示される |
-| 2 | idle → peek | ピョコッとスライドイン |
-| 3 | focused → hidden | 退場アニメーション後に非表示 |
-| 4 | drowsy → dozing | ゆっくり呼吸 + ZZZ表示 |
-| 5 | distracted → wake-up | バウンドアニメーション |
-| 6 | 通知 → 吹き出し | メッセージが5秒間表示されて自動消去 |
-| 7 | 全画面アプリ上 | VSCode等の全画面上にも表示される |
-| 8 | アバターOFF | Settings でトグルOFF → アバター非表示 |
-| 9 | アバターON | Settings でトグルON → アバター再表示 |
-| 10 | アバターOFF時の通知 | OS通知（macOS通知センター）に切り替わる |
+| 2 | focused → hidden | 退場アニメーション後に非表示 |
+| 3 | drowsy → dozing | ゆっくり呼吸 + ZZZ表示 |
+| 4 | distracted → wake-up | バウンドアニメーション |
+| 5 | 通知 → 吹き出し | メッセージが5秒間表示されて自動消去 |
+| 6 | 全画面アプリ上 | VSCode等の全画面上にも表示される |
+| 7 | アバターOFF | Settings でトグルOFF → アバター非表示 |
+| 8 | アバターON | Settings でトグルON → アバター再表示 |
+| 9 | アバターOFF時の通知 | OS通知（macOS通知センター）に切り替わる |
 
 ---
 
@@ -317,8 +313,7 @@ LLMが動作するためにはモデルが必要です。
 | シナリオ | 操作 | 期待状態 | 備考 |
 |---------|------|---------|------|
 | 横向き会話 | 横を向いて誰かと話す | focused | LLM: 横向き+操作あり=会話中 |
-| パッシブ閲覧 | Safariでマウスだけでスクロール | distracted | LLM: mouse高+keyboard低=閲覧 |
-| MTG中 | Zoomを開いて操作なし | focused | LLM: Zoom+正面+idle=MTG視聴 |
+| MTG中 | Zoomを開いて操作なし | focused | LLM: Zoom+正面=MTG視聴 |
 
 ### 9.3 フォールバックの確認
 
@@ -379,7 +374,7 @@ curl -s $BASE/api/settings/ -H "Authorization: Bearer $TOKEN" | python3 -m json.
 curl -s -X POST $BASE/api/reports/generate \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
-  -d '{"date":"2026-02-13","focused_minutes":240,"drowsy_minutes":30,"distracted_minutes":45,"away_minutes":60,"idle_minutes":25,"notification_count":3}' \
+  -d '{"date":"2026-02-13","focused_minutes":240,"drowsy_minutes":30,"distracted_minutes":45,"away_minutes":60,"notification_count":3}' \
   | python3 -m json.tool
 # 期待: summary, highlights, concerns, tomorrow_tip を含むJSON
 ```
