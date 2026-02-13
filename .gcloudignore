@@ -1,0 +1,22 @@
+# Cloud Build は server/ のみ必要（Dockerfile のビルドコンテキスト）
+.git/
+.claude/
+.tmp/
+.venv/
+__pycache__/
+*.pyc
+node_modules/
+dist/
+build/
+*.egg-info/
+
+# server/ 以外のディレクトリを除外
+client/
+engine/
+poc/
+docs/
+tools/
+
+# Large files
+*.gguf
+*.task
