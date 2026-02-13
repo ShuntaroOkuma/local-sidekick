@@ -25,13 +25,13 @@
 
 ## 変更対象ファイル
 
-| ファイル | 変更 |
-|---|---|
-| `engine/engine/estimation/rule_classifier.py` | 統合ルール関数に書き換え |
-| `engine/engine/estimation/prompts.py` | 統合プロンプト1本に書き換え |
-| `engine/engine/estimation/integrator.py` | 12パターンテーブル削除、ヘルパーに簡素化 |
-| `engine/engine/main.py` | ループ構成変更（収集と判定を分離） |
-| `engine/tests/` (新規) | テスト |
+| ファイル                                      | 変更                                     |
+| --------------------------------------------- | ---------------------------------------- |
+| `engine/engine/estimation/rule_classifier.py` | 統合ルール関数に書き換え                 |
+| `engine/engine/estimation/prompts.py`         | 統合プロンプト1本に書き換え              |
+| `engine/engine/estimation/integrator.py`      | 12パターンテーブル削除、ヘルパーに簡素化 |
+| `engine/engine/main.py`                       | ループ構成変更（収集と判定を分離）       |
+| `engine/tests/` (新規)                        | テスト                                   |
 
 変更**しない**: `llm_backend.py`, `config.py`, `camera/`, `pcusage/`, フロントエンド
 
@@ -46,12 +46,12 @@
 
 カメラとPCの**両方**を見て明白なケースのみ判定。それ以外はNone（LLMへ）。
 
-| # | 条件 | 結果 | conf |
-|---|---|---|---|
-| 1 | camera: face_detected=False | away | 1.0 |
-| 2 | camera: face_not_detected_ratio > 0.7 | away | 0.9 |
-| 3 | camera: EAR>0.27 + yaw<40° + pitch<30° + perclos_drowsy=False + yawning=False **AND** pc: not idle | focused | 0.9 |
-| — | 上記に該当しない | None (LLM) | — |
+| #   | 条件                                                                                               | 結果       | conf |
+| --- | -------------------------------------------------------------------------------------------------- | ---------- | ---- |
+| 1   | camera: face_detected=False                                                                        | away       | 1.0  |
+| 2   | camera: face_not_detected_ratio > 0.7                                                              | away       | 0.9  |
+| 3   | camera: EAR>0.27 + yaw<40° + pitch<30° + perclos_drowsy=False + yawning=False **AND** pc: not idle | focused    | 0.9  |
+| —   | 上記に該当しない                                                                                   | None (LLM) | —    |
 
 **PC idle単体では離席判定しない**: MTGやオンラインコース受講中はPC操作なしで60秒以上
 経つが、カメラでは画面を見ている。PC idle + カメラの状態を総合してLLMが判断する
@@ -180,11 +180,11 @@ def build_integrated_state(
 
 ### 変更の概要
 
-| ループ | 現在 | 新 |
-|---|---|---|
-| `_camera_loop` | フレーム取得 + 特徴抽出 + **分類** | フレーム取得 + 特徴抽出 + **snapshot保存のみ** |
-| `_pc_monitor_loop` | ポーリング + **分類** | ポーリング + **snapshot保存のみ** |
-| `_integration_loop` | integrator.integrate() | **統合ルール → 統合LLM → IntegratedState構築** |
+| ループ              | 現在                               | 新                                             |
+| ------------------- | ---------------------------------- | ---------------------------------------------- |
+| `_camera_loop`      | フレーム取得 + 特徴抽出 + **分類** | フレーム取得 + 特徴抽出 + **snapshot保存のみ** |
+| `_pc_monitor_loop`  | ポーリング + **分類**              | ポーリング + **snapshot保存のみ**              |
+| `_integration_loop` | integrator.integrate()             | **統合ルール → 統合LLM → IntegratedState構築** |
 
 ### グローバル変数の変更
 
@@ -199,9 +199,10 @@ _latest_camera_snapshot: Optional[dict] = None   # TrackerSnapshot.to_dict()
 _latest_pc_snapshot: Optional[dict] = None        # UsageSnapshot.to_dict()
 ```
 
-### _camera_loop() の変更
+### \_camera_loop() の変更
 
 5秒間隔の推定ブロック（L209-252）を簡素化:
+
 ```python
 # 現在: ルール判定 → LLMフォールバック → _latest_camera_state に格納
 # 新: snapshotをdictにして保存するだけ
@@ -212,9 +213,10 @@ if now - last_estimation >= _config.estimation_interval:
 
 分類ロジック全体（rule → LLM → ClassificationResult構築）を削除。
 
-### _pc_monitor_loop() の変更
+### \_pc_monitor_loop() の変更
 
 30秒間隔の推定ブロック（L288-338）を簡素化:
+
 ```python
 # 現在: ルール判定 → LLMフォールバック → _latest_pc_state に格納
 # 新: snapshotをdictにして保存するだけ
@@ -223,7 +225,7 @@ if now - last_estimation >= _config.pc_estimation_interval:
     _latest_pc_snapshot = snapshot.to_dict()
 ```
 
-### _integration_loop() の変更
+### \_integration_loop() の変更
 
 現在の integrator.integrate() 呼び出しを、統合判定ロジックに置き換え:
 
@@ -306,6 +308,7 @@ from engine.estimation.prompts import UNIFIED_SYSTEM_PROMPT, format_unified_prom
 ### engine/tests/test_rule_classifier.py
 
 統合ルールのテスト:
+
 - No face → away（PCデータ問わず）
 - Camera focused + PC not idle → focused（**統合ルール**）
 - PC idle > 60s + camera facing screen → None（LLMへ。MTG/動画視聴の可能性）
@@ -317,6 +320,7 @@ from engine.estimation.prompts import UNIFIED_SYSTEM_PROMPT, format_unified_prom
 - 両方None → unknown
 
 fallbackテスト:
+
 - perclos_drowsy + yawning → drowsy
 - yaw > 45° → distracted
 - 極端app_switches → distracted
@@ -344,6 +348,7 @@ python -m engine.main  # 起動して手動テスト
 ```
 
 手動テスト項目:
+
 - 正面で作業 → focused（統合ルール即判定）
 - 離席 → away（ルール即判定）
 - 頭を横に向けて会話 → focused（統合LLM: 横向き+操作あり→会話）
