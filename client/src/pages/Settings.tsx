@@ -8,19 +8,15 @@ export function Settings() {
   const [form, setForm] = useState(settings);
   const [saving, setSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
-  const [avatarEnabled, setAvatarEnabled] = useState(true);
 
   useEffect(() => {
     setForm(settings);
   }, [settings]);
 
-  useEffect(() => {
-    window.electronAPI?.getAvatarEnabled().then(setAvatarEnabled);
-  }, []);
-
   const handleAvatarToggle = async () => {
-    const next = !avatarEnabled;
-    setAvatarEnabled(next);
+    const next = !form.avatar_enabled;
+    setForm({ ...form, avatar_enabled: next });
+    // Immediately show/hide the avatar window via IPC
     await window.electronAPI?.setAvatarEnabled(next);
   };
 
@@ -125,12 +121,12 @@ export function Settings() {
             <button
               onClick={handleAvatarToggle}
               className={`relative w-11 h-6 rounded-full transition-colors ${
-                avatarEnabled ? "bg-blue-600" : "bg-gray-700"
+                form.avatar_enabled ? "bg-blue-600" : "bg-gray-700"
               }`}
             >
               <span
                 className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full transition-transform ${
-                  avatarEnabled ? "translate-x-5" : ""
+                  form.avatar_enabled ? "translate-x-5" : ""
                 }`}
               />
             </button>
