@@ -362,40 +362,36 @@ async def cloud_check_url(body: CloudUrlCheckRequest) -> dict:
 # --- Cloud auth endpoints ---
 
 
-@router.post("/cloud/login")
-async def cloud_login_endpoint(body: CloudAuthRequest) -> dict:
-    """Login to Cloud Run and save the JWT token to config."""
+async def _cloud_auth(body: CloudAuthRequest, mode: str) -> dict:
+    """Shared logic for cloud login/register."""
     config = load_config()
     if not config.cloud_run_url:
         raise HTTPException(status_code=400, detail="cloud_run_url not configured")
 
-    result = await cloud_login(config.cloud_run_url, body.email, body.password)
+    fn = cloud_login if mode == "login" else cloud_register
+    result = await fn(config.cloud_run_url, body.email, body.password)
     if result is None:
-        raise HTTPException(status_code=401, detail="Cloud login failed")
+        detail = "Cloud login failed" if mode == "login" else "Cloud registration failed"
+        status = 401 if mode == "login" else 400
+        raise HTTPException(status_code=status, detail=detail)
 
     config.cloud_auth_token = result["access_token"]
     config.cloud_auth_email = body.email
     save_config(config)
 
     return {"status": "ok", "email": body.email}
+
+
+@router.post("/cloud/login")
+async def cloud_login_endpoint(body: CloudAuthRequest) -> dict:
+    """Login to Cloud Run and save the JWT token to config."""
+    return await _cloud_auth(body, "login")
 
 
 @router.post("/cloud/register")
 async def cloud_register_endpoint(body: CloudAuthRequest) -> dict:
     """Register on Cloud Run and save the JWT token to config."""
-    config = load_config()
-    if not config.cloud_run_url:
-        raise HTTPException(status_code=400, detail="cloud_run_url not configured")
-
-    result = await cloud_register(config.cloud_run_url, body.email, body.password)
-    if result is None:
-        raise HTTPException(status_code=400, detail="Cloud registration failed")
-
-    config.cloud_auth_token = result["access_token"]
-    config.cloud_auth_email = body.email
-    save_config(config)
-
-    return {"status": "ok", "email": body.email}
+    return await _cloud_auth(body, "register")
 
 
 @router.post("/cloud/logout")

@@ -22,31 +22,17 @@ export function Settings() {
     setCloudUrlInput(settings.cloud_run_url ?? "");
   }, [settings]);
 
-  const handleCloudLogin = async () => {
+  const handleCloudAuth = async (mode: "login" | "register") => {
     setCloudLoading(true);
     setCloudError(null);
     try {
-      await api.cloudLogin(cloudEmail, cloudPassword);
+      const fn = mode === "login" ? api.cloudLogin : api.cloudRegister;
+      await fn(cloudEmail, cloudPassword);
       setCloudEmail("");
       setCloudPassword("");
       await refetch();
     } catch {
-      setCloudError("ログインに失敗しました");
-    } finally {
-      setCloudLoading(false);
-    }
-  };
-
-  const handleCloudRegister = async () => {
-    setCloudLoading(true);
-    setCloudError(null);
-    try {
-      await api.cloudRegister(cloudEmail, cloudPassword);
-      setCloudEmail("");
-      setCloudPassword("");
-      await refetch();
-    } catch {
-      setCloudError("登録に失敗しました");
+      setCloudError(mode === "login" ? "ログインに失敗しました" : "登録に失敗しました");
     } finally {
       setCloudLoading(false);
     }
@@ -301,14 +287,14 @@ export function Settings() {
                     </div>
                     <div className="flex gap-2">
                       <button
-                        onClick={handleCloudLogin}
+                        onClick={() => handleCloudAuth("login")}
                         disabled={cloudLoading || !cloudEmail || !cloudPassword}
                         className="px-4 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-medium rounded-lg transition-colors"
                       >
                         {cloudLoading ? "処理中..." : "ログイン"}
                       </button>
                       <button
-                        onClick={handleCloudRegister}
+                        onClick={() => handleCloudAuth("register")}
                         disabled={cloudLoading || !cloudEmail || !cloudPassword}
                         className="px-4 py-1.5 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-600 text-sm text-gray-300 rounded-lg transition-colors"
                       >

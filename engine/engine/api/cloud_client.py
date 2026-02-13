@@ -17,7 +17,7 @@ async def cloud_health_check(base_url: str) -> bool:
             resp.raise_for_status()
             data = resp.json()
             return data.get("status") == "ok"
-    except (httpx.HTTPError, Exception) as exc:
+    except httpx.HTTPError as exc:
         logger.warning("cloud_health_check failed: %s", exc)
         return False
 
@@ -33,7 +33,7 @@ async def cloud_login(base_url: str, email: str, password: str) -> dict | None:
             )
             resp.raise_for_status()
             return resp.json()
-    except (httpx.HTTPError, Exception) as exc:
+    except httpx.HTTPError as exc:
         logger.warning("cloud_login failed: %s", exc)
         return None
 
@@ -49,7 +49,7 @@ async def cloud_register(base_url: str, email: str, password: str) -> dict | Non
             )
             resp.raise_for_status()
             return resp.json()
-    except (httpx.HTTPError, Exception) as exc:
+    except httpx.HTTPError as exc:
         logger.warning("cloud_register failed: %s", exc)
         return None
 
@@ -88,6 +88,6 @@ async def cloud_generate_report(
             )
             resp.raise_for_status()
             return resp.json()
-    except (httpx.HTTPError, Exception) as exc:
+    except httpx.HTTPError as exc:
         logger.warning("cloud_generate_report failed: %s", exc)
         return None
