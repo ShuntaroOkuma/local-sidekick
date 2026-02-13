@@ -4,6 +4,11 @@
   "description": "Local Sidekick - AI-powered focus management for macOS",
   "main": "dist-electron/main.js",
   "private": true,
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/ShuntaroOkuma/local-sidekick.git"
+  },
+  "author": "ShuntaroOkuma",
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
