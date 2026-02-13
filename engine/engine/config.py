@@ -70,14 +70,14 @@ class EngineConfig:
 
     # Model settings
     model_tier: str = "lightweight"
-    llm_n_ctx: int = 2048
+    llm_n_ctx: int = 4096
 
     # Monitoring intervals (seconds)
     camera_frame_interval: float = 0.2
     estimation_interval: float = 5.0
     pc_poll_interval: float = 2.0
     pc_estimation_interval: float = 30.0
-    integration_interval: float = 5.0
+    integration_interval: float = 10.0
 
     # Avatar settings
     avatar_enabled: bool = True

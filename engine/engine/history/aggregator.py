@@ -1,7 +1,7 @@
 """Daily aggregation of state history and notification data.
 
 Computes:
-- Total minutes per state (focused, drowsy, distracted, away, idle)
+- Total minutes per state (focused, drowsy, distracted, away)
 - Focus blocks (continuous focused periods)
 - Notification statistics
 """
@@ -56,7 +56,6 @@ async def compute_daily_stats(
         "drowsy": 0.0,
         "distracted": 0.0,
         "away": 0.0,
-        "idle": 0.0,
     }
 
     for i, log in enumerate(logs):
@@ -93,7 +92,7 @@ async def compute_daily_stats(
         "drowsy_minutes": round(state_seconds["drowsy"] / 60.0, 1),
         "distracted_minutes": round(state_seconds["distracted"] / 60.0, 1),
         "away_minutes": round(state_seconds["away"] / 60.0, 1),
-        "idle_minutes": round(state_seconds["idle"] / 60.0, 1),
+        "idle_minutes": 0.0,  # idle state removed; kept for DB schema compat
         "notification_count": notification_count,
         "notification_accepted": notification_accepted,
         "focus_blocks": focus_blocks,

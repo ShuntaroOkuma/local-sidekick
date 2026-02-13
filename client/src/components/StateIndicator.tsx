@@ -34,12 +34,6 @@ const STATE_CONFIG: Record<
     color: "text-gray-400",
     bgColor: "bg-gray-500/20",
   },
-  idle: {
-    label: "待機",
-    emoji: "⚪",
-    color: "text-gray-500",
-    bgColor: "bg-gray-500/20",
-  },
 };
 
 const SIZE_CLASSES = {
