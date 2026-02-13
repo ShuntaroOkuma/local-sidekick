@@ -77,7 +77,7 @@ class EngineConfig:
     estimation_interval: float = 5.0
     pc_poll_interval: float = 2.0
     pc_estimation_interval: float = 30.0
-    integration_interval: float = 5.0
+    integration_interval: float = 10.0
 
     # Avatar settings
     avatar_enabled: bool = True
