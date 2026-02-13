@@ -1,425 +1,414 @@
-# Local Sidekick MVP - 動作確認手順
+# Local Sidekick - 手動テスト手順
+
+> 誰でも再現できるよう、基本的にGUI操作で確認します。
+> アバターなど再現が難しい項目はCLI（curl）で効率的に確認します。
+
+---
 
 ## 前提条件
 
 - macOS
-- Python 3.12+
-- Node.js 20+
-- (オプション) Google Cloud SDKがインストール済み（サーバーのFirestore/Vertex AI連携確認時）
+- Python 3.12+（`python3 --version` で確認）
+- Node.js 20+（`node --version` で確認）
 
-## 1. Engine (Python ローカルバックエンド)
+---
 
-### 1.1 セットアップ
+## 0. セットアップ（初回のみ）
+
+### Engine
 
 ```bash
 cd engine
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e ".[llama,download]"  # llama-cpp-python + huggingface-hub を含めてインストール
+pip install -e ".[llama,download]"
 ```
 
-**モデルファイルのダウンロード:**
-
-```bash
-# 全モデルをダウンロード（face_landmarker + GGUF 3Bモデル）
-python models/download.py
-# 期待: face_landmarker (3.6MB) + qwen2.5-3b-instruct-q4_k_m.gguf (2.0GB)
-
-# ダウンロード確認
-python models/download.py --check
-
-# 動作確認（MediaPipe Tasks API）
-python -c "from mediapipe.tasks.python.vision import FaceLandmarker; print('MediaPipe OK')"
-
-# 動作確認（llama-cpp-python）
-python -c "from llama_cpp import Llama; print('llama-cpp-python OK')"
-```
-
-> **モデルの用途:**
-> - `face_landmarker.task`: カメラの顔ランドマーク検出（EAR, 頭部姿勢, 視線）
-> - `qwen2.5-3b-instruct-q4_k_m.gguf`: ルール分類器が判定不能な場合のLLMフォールバック（llama-cpp-pythonで実行）
-
-> **注意**: EngineはMediaPipe Tasks API (`mediapipe.tasks.python.vision.FaceLandmarker`) を使用しています。
-> 旧Solutions API (`mediapipe.solutions.face_mesh`) とは異なります。
-
-### 1.2 起動
-
-```bash
-source .venv/bin/activate
-python -m engine.main
-```
-
-起動ログに以下が表示されること:
-```
-INFO: Engine started on http://localhost:18080
-```
-
-### 1.3 REST API テスト
-
-```bash
-# ヘルスチェック
-curl -s http://localhost:18080/api/health | python3 -m json.tool --no-ensure-ascii
-# 期待: {"status": "ok"}
-
-# 現在の状態取得
-curl -s http://localhost:18080/api/state | python3 -m json.tool --no-ensure-ascii
-# 期待: state, confidence, camera_state, pc_state, timestamp を含むJSON
-
-# 設定取得
-curl -s http://localhost:18080/api/settings | python3 -m json.tool --no-ensure-ascii
-# 期待: working_hours_start, working_hours_end, distracted_cooldown_minutes(=20) 等
-
-# 設定更新
-curl -s -X PUT http://localhost:18080/api/settings \
-  -H "Content-Type: application/json" \
-  -d '{"max_notifications_per_day": 10}' | python3 -m json.tool --no-ensure-ascii
-# 期待: max_notifications_per_day が 10 に更新
-
-# 履歴取得
-curl -s http://localhost:18080/api/history | python3 -m json.tool --no-ensure-ascii
-# 期待: state_log 配列（起動直後は少量）
-
-# 日次統計
-curl -s http://localhost:18080/api/daily-stats | python3 -m json.tool --no-ensure-ascii
-# 期待: focused_minutes, drowsy_minutes 等（unprefixed keys）
-
-# 通知一覧
-curl -s http://localhost:18080/api/notifications | python3 -m json.tool --no-ensure-ascii
-# 期待: 空配列（通知未発生の場合）
-
-# 未応答通知
-curl -s http://localhost:18080/api/notifications/pending | python3 -m json.tool --no-ensure-ascii
-# 期待: 空配列
-
-# エンジン停止
-curl -s -X POST http://localhost:18080/api/engine/stop | python3 -m json.tool --no-ensure-ascii
-# 期待: {"status": "stopped"}
-
-# エンジン再起動
-curl -s -X POST http://localhost:18080/api/engine/start | python3 -m json.tool --no-ensure-ascii
-# 期待: {"status": "started"}
-
-# レポート生成（ダミー）
-curl -s -X POST http://localhost:18080/api/reports/generate | python3 -m json.tool --no-ensure-ascii
-# 期待: 日次統計 + report フィールド
-```
-
-### 1.4 WebSocket テスト
-
-```bash
-# websocat が必要: brew install websocat
-websocat ws://localhost:18080/ws/state
-# 期待: {"type": "state_update", "state": "...", ...} が定期的に流れる
-```
-
-### 1.5 確認ポイント
-
-| 項目 | 期待動作 | カメラなし時 |
-|------|---------|------------|
-| PC状態監視 | アプリ名・キー入力をモニター | 正常動作 |
-| カメラ状態推定 | MediaPipeで顔特徴量→状態判定 | away固定（graceful degradation） |
-| 統合判定 | カメラ+PC→最終状態 | PC状態のみで判定 |
-| LLMフォールバック | ルール分類で低信頼度時にLLM使用 | ルールのみ（LLMスキップ） |
-| 履歴保存 | SQLite (~/.local-sidekick/history.db) | 正常保存 |
-
----
-
-## 2. Client (Electron アプリ)
-
-### 2.1 セットアップ
+### Client
 
 ```bash
 cd client
 npm install
 ```
 
-### 2.2 ビルド確認
+### モデルダウンロード（GUIでも可能、後述）
 
 ```bash
-# TypeScript型チェック
-npx tsc --noEmit
-# 期待: エラーなし
-
-# プロダクションビルド
-npm run build
-# 期待: dist-electron/main.js, dist-electron/preload.js, dist/ が生成
-```
-
-### 2.3 開発サーバー起動
-
-```bash
-# Engine が localhost:18080 で起動していること
-npm run dev
-```
-
-起動ログ:
-```
-dev server running for the electron renderer process at: http://localhost:5173/
-start electron app...
-```
-
-### 2.4 UI確認ポイント
-
-| 画面 | 確認内容 |
-|------|---------|
-| メニューバー | トレイアイコン表示、左クリックでウィンドウ表示/非表示 |
-| Dashboard | 現在の状態（アイコン+テキスト）、信頼度、今日の集中時間 |
-| Timeline | 時系列カラーバー（緑=focused, 黄=distracted, 赤=drowsy, 灰=away/idle） |
-| Report | 日次レポート表示（Vertex AI未接続時はダミー） |
-| Settings | 稼働時間、通知上限、カメラON/OFF、サーバ同期ON/OFF |
-| 右クリックメニュー | Dashboard / Settings / Quit Local Sidekick |
-
-### 2.5 PythonBridge
-
-- Engine が未起動の場合: `Failed to start Python Engine` ログが出るが、アプリは起動する
-- Engine が起動済みの場合: 自動接続してリアルタイム状態表示
-
----
-
-## 3. Server (Cloud Run API)
-
-### 3.1 セットアップ
-
-```bash
-cd server
-python3 -m venv .venv
-source .venv/bin/activate
-pip install -e .
-```
-
-### 3.2 ローカル起動
-
-```bash
-# GCPプロジェクト未設定時はインメモリストアを使用
-USE_MEMORY_STORE=true JWT_SECRET=test-secret uvicorn server.main:app --port 8081
-```
-
-### 3.3 API テスト
-
-```bash
-BASE=http://localhost:8081
-
-# 1. ヘルスチェック
-curl -s $BASE/api/health | python3 -m json.tool --no-ensure-ascii
-# 期待: {"status": "ok", "service": "local-sidekick-api"}
-
-# 2. ユーザー登録
-curl -s -X POST $BASE/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","password":"testpass123"}' | python3 -m json.tool --no-ensure-ascii
-# 期待: {"access_token": "eyJ...", "token_type": "bearer"}
-
-# 3. ログイン
-TOKEN=$(curl -s -X POST $BASE/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","password":"testpass123"}' \
-  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
-echo "Token: ${TOKEN:0:30}..."
-# 期待: JWT トークン取得
-
-# 4. 設定取得
-curl -s $BASE/api/settings/ \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool --no-ensure-ascii
-# 期待: デフォルト設定（working_hours_start: "09:00" 等）
-
-# 5. 設定更新
-curl -s -X PUT $BASE/api/settings/ \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"camera_enabled":false}' | python3 -m json.tool --no-ensure-ascii
-# 期待: camera_enabled が false に更新
-
-# 6. 統計アップロード
-curl -s -X POST $BASE/api/statistics/ \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"date":"2026-02-11","focused_minutes":240,"drowsy_minutes":30,"distracted_minutes":45,"away_minutes":60,"idle_minutes":25,"notification_count":3}' \
-  | python3 -m json.tool --no-ensure-ascii
-# 期待: {"status": "ok", "date": "2026-02-11"}
-
-# 7. レポート生成
-curl -s -X POST $BASE/api/reports/generate \
-  -H "Authorization: Bearer $TOKEN" \
-  -H "Content-Type: application/json" \
-  -d '{"date":"2026-02-11","focused_minutes":240,"drowsy_minutes":30,"distracted_minutes":45,"away_minutes":60,"idle_minutes":25,"notification_count":3}' \
-  | python3 -m json.tool --no-ensure-ascii
-# 期待: summary, highlights, concerns, tomorrow_tip を含むJSON
-# (Vertex AI未接続時はダミーレポート)
-
-# 8. レポート取得
-curl -s $BASE/api/reports/2026-02-11 \
-  -H "Authorization: Bearer $TOKEN" | python3 -m json.tool --no-ensure-ascii
-# 期待: 手順7で生成したレポートと同内容
-```
-
-### 3.4 エラーケース確認
-
-```bash
-# 重複登録 → 409
-curl -s -X POST $BASE/api/auth/register \
-  -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","password":"testpass123"}' | python3 -m json.tool --no-ensure-ascii
-# 期待: {"detail": "User with this email already exists"}
-
-# パスワード不一致 → 401
-curl -s -X POST $BASE/api/auth/login \
-  -H "Content-Type: application/json" \
-  -d '{"email":"test@example.com","password":"wrong"}' | python3 -m json.tool --no-ensure-ascii
-# 期待: {"detail": "Invalid email or password"}
-
-# 認証なしアクセス → 403
-curl -s $BASE/api/settings/ | python3 -m json.tool --no-ensure-ascii
-# 期待: {"detail": "Not authenticated"}
-```
-
-### 3.5 注意事項
-
-- **URL末尾スラッシュ**: `/api/settings/`, `/api/statistics/` はスラッシュ付きが正式（スラッシュなしは307リダイレクト）
-- **USE_MEMORY_STORE**: GCPプロジェクト未設定時は `USE_MEMORY_STORE=true` を付けて起動（サーバー再起動でデータは消える）
-- **Vertex AI**: GCPプロジェクト未設定時はダミーレポートが返る
-
----
-
-## 4. アバター機能テスト（Mock Engine）
-
-カメラやPC監視なしでアバターの動作を確認するためのモックエンジンを用意しています。
-
-### 4.1 セットアップ
-
-```bash
-# FastAPI + uvicorn が必要（engine の venv を流用可能）
 cd engine && source .venv/bin/activate
+python models/download.py
+# face_landmarker (3.6MB) + qwen2.5-3b (2.0GB) がダウンロードされる
 ```
 
-### 4.2 Mock Engine 起動
+---
+
+## 1. 起動
+
+2つのターミナルを開きます。
+
+**ターミナル1: Engine**
 
 ```bash
-python ../tools/mock_engine.py
-# → http://localhost:18080 で起動
+cd engine && source .venv/bin/activate && python -m engine.main
 ```
 
-Mock Engine は本物の Engine と同じポート・エンドポイントを提供しますが、状態遷移を手動で制御できます。
+ログに `Uvicorn running on http://127.0.0.1:18080` が出れば OK。
 
-### 4.3 Client 起動
-
-別ターミナルで:
+**ターミナル2: Client（Electronアプリ）**
 
 ```bash
 cd client && npm run dev
 ```
 
-### 4.4 アバター動作確認
+Electronウィンドウが自動で開きます。
 
-curlで状態を切り替え、アバターの反応を確認します:
+---
+
+## 2. Dashboard（メイン画面）
+
+アプリが開くと Dashboard が表示されます。
+
+### 確認項目
+
+| # | 確認内容 | 期待動作 |
+|---|---------|---------|
+| 1 | 接続状態 | 左上に緑色のドット（Engine接続済み） |
+| 2 | 状態表示 | 中央の円形インジケーターに現在の状態（focused / drowsy / distracted / away / idle）と信頼度（%）が表示される |
+| 3 | サブ状態 | インジケーター下に Camera State / PC State が表示される（統合推定後はnull表示も正常） |
+| 4 | 今日のサマリー | 集中・眠気・散漫の各分数が表示される |
+| 5 | 最近の通知 | 通知が発生していれば一覧表示される |
+| 6 | リアルタイム更新 | PCで作業していると状態が変化する（30秒ごとに自動更新） |
+
+### テスト操作
+
+1. **集中状態の確認**: PCで普通に作業（コードを書く等）→ Dashboard に `focused` と表示される
+2. **離席の確認**: カメラONの状態でPCから離れる → `away` に変化する
+3. **Engine停止時の確認**: Engine を Ctrl+C で停止 → 接続ドットが赤に変わる
+
+---
+
+## 3. Timeline（タイムライン）
+
+画面下部のナビゲーションで **Timeline** タブをタップします。
+
+### 確認項目
+
+| # | 確認内容 | 期待動作 |
+|---|---------|---------|
+| 1 | 日付ナビゲーション | 左右矢印で前日/翌日に移動できる。未来日には進めない |
+| 2 | タイムライン表示 | 稼働時間帯にカラーバーが表示される（緑=focused, 黄=distracted, 赤=drowsy, 灰=away/idle） |
+| 3 | 通知ログ | その日の通知が時刻・種類・メッセージとともに一覧表示される |
+| 4 | データなし | 過去日で記録がなければ「No data yet」と表示される |
+
+### テスト操作
+
+1. 今日の日付で表示 → Engine起動中にカラーバーが伸びていくことを確認
+2. 左矢印で前日に移動 → データがなければ空表示
+
+---
+
+## 4. Report（日次レポート）
+
+画面下部のナビゲーションで **Report** タブをタップします。
+
+### 確認項目
+
+| # | 確認内容 | 期待動作 |
+|---|---------|---------|
+| 1 | レポート未生成時 | 「レポートを生成」ボタンが表示される |
+| 2 | レポート生成 | ボタン押下でレポートが生成される（ローディング表示後に結果表示） |
+| 3 | レポート内容 | サマリー・ハイライト（緑）・気になるポイント（黄）・明日の一手 が表示される |
+
+### テスト操作
+
+1. 「レポートを生成」ボタンをクリック
+2. レポートが表示されることを確認（Vertex AI未接続時はダミーレポート）
+
+---
+
+## 5. Settings（設定）
+
+画面下部のナビゲーションで **Settings** タブをタップします。
+
+### 確認項目
+
+| # | セクション | 確認内容 | 期待動作 |
+|---|-----------|---------|---------|
+| 1 | 稼働時間 | 開始/終了時刻を変更して保存 | 次回 Timeline に反映される |
+| 2 | 通知上限 | スライダーで変更して保存 | 1日の通知回数が制限される |
+| 3 | アバター | トグルをON/OFF | 即座にアバターウィンドウが表示/非表示される（保存不要） |
+| 4 | カメラ | ON/OFFトグル | 保存後にカメラ監視が開始/停止される |
+| 5 | サーバ同期 | ON/OFFトグル | Cloud Runとの同期設定（将来機能） |
+| 6 | AIモデル | ティア選択（無効/軽量/推奨） | 選択したモデルティアが保存される |
+| 7 | 保存 | 「保存」ボタンをクリック | 「保存しました」メッセージが3秒間表示される |
+
+### モデルダウンロード（GUI操作）
+
+1. Settings → AIモデル設定 を開く
+2. 「軽量 (3B)」または「推奨 (7B)」ボタンをクリック
+3. モデルカードの「ダウンロード」ボタンをクリック
+4. ダウンロード中のプログレス表示を確認
+5. ダウンロード完了後、ステータスが「ダウンロード済み」に変わる
+
+| # | 確認内容 | 期待動作 |
+|---|---------|---------|
+| 1 | ティア「無効」選択 | LLM不使用（ルールベース判定のみ）。モデル不要 |
+| 2 | ティア「軽量」選択 + モデル未DL | 警告メッセージが表示される |
+| 3 | モデルダウンロード | プログレス表示後に完了 |
+| 4 | モデル削除 | 「削除」ボタンで削除、ステータスが「未ダウンロード」に戻る |
+
+---
+
+## 6. メニューバー・トレイ操作
+
+| # | 操作 | 期待動作 |
+|---|------|---------|
+| 1 | メニューバーのトレイアイコンをクリック | ウィンドウが表示/非表示切り替え |
+| 2 | トレイアイコン右クリック | コンテキストメニュー表示（Dashboard / Settings / Quit） |
+| 3 | メニューから「Dashboard」選択 | Dashboard画面が開く |
+| 4 | メニューから「Settings」選択 | Settings画面が開く |
+| 5 | メニューから「Quit Local Sidekick」選択 | アプリが終了する |
+| 6 | ウィンドウの閉じるボタン（×） | ウィンドウは非表示になるが、アプリはトレイに残る |
+
+---
+
+## 7. 通知テスト
+
+通知は特定の状態が一定時間継続すると自動発火します。自然発火を待つのは大変なので、**Mock Engine** を使ってテストします。
+
+### Mock Engine での通知テスト
+
+**手順:**
+
+1. 本物のEngineが起動していれば停止する（Ctrl+C）
+2. Mock Engine を起動:
 
 ```bash
-# 状態変更（focused / drowsy / distracted / away / idle）
-curl -X POST http://localhost:18080/test/state/idle
-# → アバターがピョコッと覗き込む（peek）
-
-curl -X POST http://localhost:18080/test/state/focused
-# → アバターが退場して非表示に（retreat → hidden）
-
-curl -X POST http://localhost:18080/test/state/drowsy
-# → アバターがうとうと（dozing + ZZZ）
-
-curl -X POST http://localhost:18080/test/state/distracted
-# → アバターが跳ねて注意喚起（wake-up bounce）
-
-curl -X POST http://localhost:18080/test/state/away
-# → アバターが覗き込み（peek）
+cd engine && source .venv/bin/activate
+python ../tools/mock_engine.py
 ```
 
-通知テスト:
+3. Clientを起動（別ターミナル）:
 
 ```bash
-# 通知送信（drowsy / distracted / over_focus）
+cd client && npm run dev
+```
+
+4. 以下のcurlコマンドで通知を発火:
+
+```bash
+# 眠気通知
 curl -X POST http://localhost:18080/test/notification/drowsy
-# → アバター上に吹き出し「眠気が来ています！立ちましょう」
+# → OS通知: 「眠気が来ています！立ちましょう」
 
+# 散漫通知
 curl -X POST http://localhost:18080/test/notification/distracted
-# → 吹き出し「集中が途切れています」
+# → OS通知: 「集中が途切れています」
 
+# 過集中通知
 curl -X POST http://localhost:18080/test/notification/over_focus
-# → 吹き出し「休憩しませんか？」
+# → OS通知: 「休憩しませんか？」
 ```
 
-### 4.5 チェックリスト
+### 通知チェックリスト
+
+| # | 確認内容 | 期待動作 |
+|---|---------|---------|
+| 1 | 通知表示 | macOS通知センターにバナー表示される |
+| 2 | アクションボタン | 「実行」「あとで」ボタンが表示される |
+| 3 | アバターON時 | Settings でアバターをONにすると、OS通知の代わりにアバター上の吹き出しで表示される |
+
+---
+
+## 8. アバター機能テスト
+
+アバターの状態変化は手動では再現が難しいため、**Mock Engine + curl** でテストします。
+
+### 準備
+
+1. Mock Engine 起動:
+
+```bash
+cd engine && source .venv/bin/activate
+python ../tools/mock_engine.py
+```
+
+2. Client 起動（別ターミナル）:
+
+```bash
+cd client && npm run dev
+```
+
+3. Settings 画面でアバターを **ON** にする
+
+### 状態切り替え
+
+```bash
+# idle: アバターがピョコッと覗き込む
+curl -X POST http://localhost:18080/test/state/idle
+
+# focused: アバターが退場して非表示になる
+curl -X POST http://localhost:18080/test/state/focused
+
+# drowsy: アバターがうとうと（ZZZ表示）
+curl -X POST http://localhost:18080/test/state/drowsy
+
+# distracted: アバターが跳ねて注意喚起
+curl -X POST http://localhost:18080/test/state/distracted
+
+# away: アバターが覗き込み
+curl -X POST http://localhost:18080/test/state/away
+```
+
+### 吹き出し（通知）
+
+```bash
+# 眠気通知 → アバター上に吹き出し表示（5秒後に自動消去）
+curl -X POST http://localhost:18080/test/notification/drowsy
+
+# 散漫通知
+curl -X POST http://localhost:18080/test/notification/distracted
+
+# 過集中通知
+curl -X POST http://localhost:18080/test/notification/over_focus
+```
+
+### アバター チェックリスト
 
 | # | 項目 | 期待動作 |
 |---|------|---------|
-| 1 | アバター初期表示 | アプリ起動後、画面右下にキャラクター表示 |
+| 1 | 初期表示 | 画面右下にキャラクターが表示される |
 | 2 | idle → peek | ピョコッとスライドイン |
 | 3 | focused → hidden | 退場アニメーション後に非表示 |
 | 4 | drowsy → dozing | ゆっくり呼吸 + ZZZ表示 |
 | 5 | distracted → wake-up | バウンドアニメーション |
 | 6 | 通知 → 吹き出し | メッセージが5秒間表示されて自動消去 |
-| 7 | 全画面アプリ上表示 | VSCode等の全画面上にも表示される |
-| 8 | Settings → アバターOFF | トグルOFFでアバター非表示 |
-| 9 | Settings → アバターON | トグルONでアバター再表示 |
-| 10 | アバターOFF時の通知 | OS通知（macOS Notification Center）に切り替わる |
+| 7 | 全画面アプリ上 | VSCode等の全画面上にも表示される |
+| 8 | アバターOFF | Settings でトグルOFF → アバター非表示 |
+| 9 | アバターON | Settings でトグルON → アバター再表示 |
+| 10 | アバターOFF時の通知 | OS通知（macOS通知センター）に切り替わる |
 
 ---
 
-## 5. 結合テスト（Engine + Client）
+## 9. 統合推定のテスト
 
-### 5.1 手順
+統合推定（統合ルール + LLM）が正しく動作しているか確認します。
 
-1. Engine起動: `cd engine && source .venv/bin/activate && python -m engine.main`
-2. Client起動: `cd client && npm run dev`
-3. メニューバーのトレイアイコンをクリックしてDashboard表示
-4. Dashboardに現在の状態がリアルタイム表示されることを確認
+### 9.1 ルール判定の確認（本物のEngine使用）
 
-### 5.2 シナリオテスト
+| シナリオ | 操作 | 期待状態 | 判定方法 |
+|---------|------|---------|---------|
+| 集中 | カメラに正面を向け、キーボードで入力 | focused | ルール即判定（Rule 3） |
+| 離席 | カメラの前から離れる | away | ルール即判定（Rule 1） |
 
-| シナリオ | 操作 | 期待結果 |
-|---------|------|---------|
-| 集中状態 | PCで作業を続ける | Dashboard: focused表示 |
-| 離席 | PCから離れる（カメラON時） | Dashboard: away表示 |
-| アイドル | 数分間操作なし | Dashboard: idle表示 |
-| 通知確認 | 通知一覧で確認 | 通知履歴表示 |
-| 設定変更 | Settings画面で設定変更 | 即時反映 |
+Engineのログで確認:
+```
+# ルール判定の場合: source="rule" と表示される
+# LLM判定の場合: source="llm" と表示される
+```
+
+### 9.2 LLM判定の確認
+
+LLMが動作するためにはモデルが必要です。
+
+1. Settings → AIモデル設定 → 「軽量 (3B)」を選択、モデルをダウンロード
+2. 保存してEngineを再起動
+3. 以下の曖昧なシナリオでLLM判定を確認:
+
+| シナリオ | 操作 | 期待状態 | 備考 |
+|---------|------|---------|------|
+| 横向き会話 | 横を向いて誰かと話す | focused | LLM: 横向き+操作あり=会話中 |
+| パッシブ閲覧 | Safariでマウスだけでスクロール | distracted | LLM: mouse高+keyboard低=閲覧 |
+| MTG中 | Zoomを開いて操作なし | focused | LLM: Zoom+正面+idle=MTG視聴 |
+
+### 9.3 フォールバックの確認
+
+1. Settings → AIモデル設定 → 「無効」を選択して保存
+2. Engineを再起動
+3. 曖昧なシナリオ（横向き等）→ フォールバック関数で判定される（source="rule"、信頼度低め）
 
 ---
 
-## 6. 自動テスト結果サマリー (2026-02-11)
+## 10. システム連携テスト
 
-### Engine
-| テスト | 結果 |
-|-------|------|
-| GET /api/health | ✅ OK |
-| GET /api/state | ✅ state=idle (PC監視のみ) |
-| GET /api/settings | ✅ distracted_cooldown=20 |
-| PUT /api/settings | ✅ 設定更新反映 |
-| GET /api/history | ✅ state_log配列返却 |
-| GET /api/daily-stats | ✅ unprefixed keys |
-| GET /api/notifications | ✅ 空配列 |
-| GET /api/notifications/pending | ✅ 空配列 |
-| POST /api/engine/stop | ✅ 監視停止 |
-| POST /api/engine/start | ✅ 監視再開 |
-| POST /api/reports/generate | ✅ 統計+レポート |
-| WebSocket /ws/state | ✅ type=state_update |
+| # | シナリオ | 操作 | 期待動作 |
+|---|---------|------|---------|
+| 1 | スリープ復帰 | MacBookの蓋を閉じて開く | 監視が一時停止→自動再開。古いデータで判定されない |
+| 2 | Engine未起動 | Engineを停止した状態でClientを起動 | 接続ドット赤、アプリは正常に動作する |
+| 3 | Engine再接続 | Client起動中にEngineを起動 | 自動接続されてリアルタイム表示が始まる |
 
-### Client
-| テスト | 結果 |
-|-------|------|
-| npm install | ✅ 成功 |
-| npm run build | ✅ 成功 |
-| npx tsc --noEmit | ✅ 型エラーなし |
-| Electron起動 | ✅ Tray + Renderer |
-| PythonBridge | ✅ Engine未起動時graceful failure |
+---
 
-### Server
-| テスト | 結果 |
-|-------|------|
-| GET /api/health | ✅ OK |
-| POST /api/auth/register | ✅ JWT返却 |
-| POST /api/auth/login | ✅ JWT返却 |
-| GET /api/settings/ | ✅ デフォルト設定 |
-| PUT /api/settings/ | ✅ 設定更新 |
-| POST /api/statistics/ | ✅ 統計保存 |
-| POST /api/reports/generate | ✅ ダミーレポート |
-| GET /api/reports/{date} | ✅ レポート取得 |
-| 重複登録 | ✅ 409 |
-| パスワード不一致 | ✅ 401 |
-| 認証なし | ✅ 403 |
+## 11. Server（Cloud Run API）テスト
+
+> サーバーはオプショナル（ローカルのみでも動作する）。
+> テストする場合は以下のCLI手順で確認。
+
+### 起動
+
+```bash
+cd server && source .venv/bin/activate
+USE_MEMORY_STORE=true JWT_SECRET=test-secret uvicorn server.main:app --port 8081
+```
+
+### API確認
+
+```bash
+BASE=http://localhost:8081
+
+# ヘルスチェック
+curl -s $BASE/api/health | python3 -m json.tool
+# 期待: {"status": "ok", "service": "local-sidekick-api"}
+
+# ユーザー登録
+curl -s -X POST $BASE/api/auth/register \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"testpass123"}' | python3 -m json.tool
+# 期待: access_token を含むJSON
+
+# ログイン
+TOKEN=$(curl -s -X POST $BASE/api/auth/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"testpass123"}' \
+  | python3 -c "import sys,json; print(json.load(sys.stdin)['access_token'])")
+
+# 設定取得
+curl -s $BASE/api/settings/ -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
+# 期待: working_hours_start, max_notifications_per_day 等
+
+# レポート生成
+curl -s -X POST $BASE/api/reports/generate \
+  -H "Authorization: Bearer $TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"date":"2026-02-13","focused_minutes":240,"drowsy_minutes":30,"distracted_minutes":45,"away_minutes":60,"idle_minutes":25,"notification_count":3}' \
+  | python3 -m json.tool
+# 期待: summary, highlights, concerns, tomorrow_tip を含むJSON
+```
+
+---
+
+## 12. 自動テスト
+
+```bash
+# Engine のユニットテスト（41テスト）
+cd engine && source .venv/bin/activate
+python -m pytest engine/tests/ -v
+# 期待: 41 passed
+
+# Client のビルド確認
+cd client
+npx tsc --noEmit   # TypeScript型チェック
+npm run build       # プロダクションビルド
+```
+
+---
+
+## トラブルシューティング
+
+| 症状 | 原因 | 対処 |
+|------|------|------|
+| Dashboard が「接続中...」のまま | Engine未起動 | ターミナル1でEngine起動を確認 |
+| カメラが動作しない | カメラ権限未付与 | macOS設定 → プライバシーとセキュリティ → カメラ でターミナルに権限を付与 |
+| LLMが動作しない | モデル未ダウンロード | Settings → AIモデル設定 でモデルをダウンロード |
+| アバターが表示されない | アバターOFF | Settings → アバター でトグルをONにする |
+| `pip install` でエラー | llama-cpp-python のビルド失敗 | `CMAKE_ARGS="-DGGML_METAL=on" pip install llama-cpp-python` を試す |
+| ポート18080が使用中 | 前回のEngineプロセスが残っている | `lsof -i :18080` で確認、`kill <PID>` で停止 |
