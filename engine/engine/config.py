@@ -70,7 +70,7 @@ class EngineConfig:
 
     # Model settings
     model_tier: str = "lightweight"
-    llm_n_ctx: int = 2048
+    llm_n_ctx: int = 4096
 
     # Monitoring intervals (seconds)
     camera_frame_interval: float = 0.2

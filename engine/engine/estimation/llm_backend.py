@@ -120,7 +120,7 @@ class LLMBackend:
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt},
             ],
-            max_tokens=256,
+            max_tokens=128,
             temperature=0.1,
         )
         content = response["choices"][0]["message"]["content"]
