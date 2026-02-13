@@ -1,9 +1,14 @@
 import { app, BrowserWindow, ipcMain, powerMonitor } from "electron";
 import { join } from "path";
 import { readFileSync } from "fs";
+import { execFile } from "child_process";
 import { createTray, updateTrayIcon } from "./tray";
 import { PythonBridge } from "./python-bridge";
-import { showNotification, setAvatarEnabled, isAvatarEnabled } from "./notification";
+import {
+  showNotification,
+  setAvatarEnabled,
+  isAvatarEnabled,
+} from "./notification";
 import type { NotificationType } from "./notification";
 import {
   createAvatarWindow,
@@ -15,7 +20,11 @@ import {
 /** Read avatar_enabled from ~/.local-sidekick/config.json (before engine starts). */
 function readAvatarEnabledFromConfig(): boolean {
   try {
-    const configPath = join(app.getPath("home"), ".local-sidekick", "config.json");
+    const configPath = join(
+      app.getPath("home"),
+      ".local-sidekick",
+      "config.json",
+    );
     const data = JSON.parse(readFileSync(configPath, "utf-8"));
     return data.avatar_enabled !== false; // default true
   } catch (err) {
@@ -86,13 +95,16 @@ function startStatePolling(): void {
 
         // Check for notifications
         const notifRes = await fetch(
-          `http://localhost:${port}/api/notifications/pending`
+          `http://localhost:${port}/api/notifications/pending`,
         );
         if (notifRes.ok) {
           const notifications = await notifRes.json();
           for (const notif of notifications) {
             // Forward notification to avatar window
             sendToAvatar("avatar-notification", notif);
+
+            // Play Glass notification sound
+            execFile("afplay", ["/System/Library/Sounds/Purr.aiff"]);
 
             showNotification(
               notif.type as NotificationType,
@@ -108,9 +120,9 @@ function startStatePolling(): void {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
                     body: JSON.stringify({ action }),
-                  }
+                  },
                 ).catch(() => {});
-              }
+              },
             );
           }
         }
@@ -141,10 +153,7 @@ app.whenReady().then(async () => {
   avatarWin = createAvatarWindow();
   if (process.env.ELECTRON_RENDERER_URL) {
     // In dev, replace index.html with avatar.html in the dev server URL
-    const devUrl = process.env.ELECTRON_RENDERER_URL.replace(
-      /\/$/,
-      ""
-    );
+    const devUrl = process.env.ELECTRON_RENDERER_URL.replace(/\/$/, "");
     avatarWin.loadURL(`${devUrl}/src/avatar/avatar.html`);
   } else {
     avatarWin.loadFile(join(__dirname, "../dist/src/avatar/avatar.html"));
@@ -223,9 +232,12 @@ app.whenReady().then(async () => {
     console.log(`${reason} – pausing engine monitoring`);
     stopStatePolling();
     try {
-      const res = await fetch(`http://localhost:${enginePort()}/api/engine/pause`, {
-        method: "POST",
-      });
+      const res = await fetch(
+        `http://localhost:${enginePort()}/api/engine/pause`,
+        {
+          method: "POST",
+        },
+      );
       if (!res.ok) {
         console.warn(`Failed to pause engine: ${res.statusText}`);
       }
@@ -237,9 +249,12 @@ app.whenReady().then(async () => {
   async function resumeEngine(reason: string): Promise<void> {
     console.log(`${reason} – resuming engine monitoring`);
     try {
-      const res = await fetch(`http://localhost:${enginePort()}/api/engine/resume`, {
-        method: "POST",
-      });
+      const res = await fetch(
+        `http://localhost:${enginePort()}/api/engine/resume`,
+        {
+          method: "POST",
+        },
+      );
       if (!res.ok) {
         console.warn(`Failed to resume engine: ${res.statusText}`);
       }
