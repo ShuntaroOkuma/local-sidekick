@@ -190,6 +190,161 @@ class TestClassifyUnified:
 
         assert result is None
 
+    def test_camera_present_pc_none_returns_none(self) -> None:
+        """camera present (not away), pc=None -> None (LLM needed)."""
+        camera = make_camera_snapshot(
+            ear_average=0.30,
+            head_pose={"yaw": 5, "pitch": -3},
+            perclos_drowsy=False,
+            yawning=False,
+        )
+
+        result = classify_unified(camera, None)
+
+        # Camera shows focused signals but PC is unavailable;
+        # cannot confirm "pc not idle" so defers to LLM.
+        assert result is None
+
+    def test_safari_passive_browsing_with_clear_focus_signals(self) -> None:
+        """Safari browsing with clear camera focused signals -> focused.
+
+        When camera shows EAR>0.27, yaw<25, pitch<25, no drowsy and PC is
+        not idle, the focused rule fires even for Safari browsing. The
+        browsing pattern (low keyboard + high mouse) is for LLM to evaluate
+        only when camera signals are ambiguous.
+        """
+        camera = make_camera_snapshot(
+            ear_average=0.28,
+            head_pose={"yaw": 3, "pitch": -5},
+            perclos_drowsy=False,
+            yawning=False,
+        )
+        pc = make_pc_snapshot(
+            active_app="Safari",
+            keyboard_rate_window=1,
+            mouse_rate_window=180,
+            seconds_since_last_keyboard=55,
+        )
+
+        result = classify_unified(camera, pc)
+
+        # Camera focused signals + PC not idle -> rule 3 fires
+        assert result is not None
+        assert result.state == "focused"
+        assert result.confidence == 0.9
+
+    def test_safari_passive_browsing_without_ear_returns_none(self) -> None:
+        """Safari browsing with missing EAR -> None (LLM determines).
+
+        Without ear_average, the focused rule cannot fire, so the
+        ambiguous browsing pattern goes to LLM.
+        """
+        camera = {
+            "face_detected": True,
+            "perclos_drowsy": False,
+            "yawning": False,
+            "head_pose": {"yaw": 3, "pitch": -5},
+            "face_not_detected_ratio": 0.0,
+        }
+        pc = make_pc_snapshot(
+            active_app="Safari",
+            keyboard_rate_window=1,
+            mouse_rate_window=180,
+            seconds_since_last_keyboard=55,
+        )
+
+        result = classify_unified(camera, pc)
+
+        assert result is None
+
+    def test_fndr_at_boundary_does_not_trigger(self) -> None:
+        """face_not_detected_ratio exactly 0.7 should NOT trigger away."""
+        camera = make_camera_snapshot(face_not_detected_ratio=0.7)
+        pc = make_pc_snapshot()
+
+        result = classify_unified(camera, pc)
+
+        # 0.7 is not > 0.7, so rule 2 should not fire
+        if result is not None:
+            assert result.state != "away" or result.confidence != 0.9
+
+    def test_focused_requires_ear_above_threshold(self) -> None:
+        """EAR <= 0.27 prevents focused rule from firing."""
+        camera = make_camera_snapshot(
+            ear_average=0.27,
+            head_pose={"yaw": 5, "pitch": -3},
+            perclos_drowsy=False,
+            yawning=False,
+        )
+        pc = make_pc_snapshot(is_idle=False, idle_seconds=2)
+
+        result = classify_unified(camera, pc)
+
+        # EAR 0.27 is not > 0.27, so focused rule should not fire
+        assert result is None
+
+    def test_focused_requires_yaw_below_25(self) -> None:
+        """yaw >= 25 prevents focused rule from firing."""
+        camera = make_camera_snapshot(
+            ear_average=0.30,
+            head_pose={"yaw": 25, "pitch": 0},
+            perclos_drowsy=False,
+            yawning=False,
+        )
+        pc = make_pc_snapshot(is_idle=False, idle_seconds=2)
+
+        result = classify_unified(camera, pc)
+
+        # yaw 25 is not < 25, so focused rule should not fire
+        assert result is None
+
+    def test_focused_requires_pitch_below_25(self) -> None:
+        """pitch >= 25 prevents focused rule from firing."""
+        camera = make_camera_snapshot(
+            ear_average=0.30,
+            head_pose={"yaw": 5, "pitch": 25},
+            perclos_drowsy=False,
+            yawning=False,
+        )
+        pc = make_pc_snapshot(is_idle=False, idle_seconds=2)
+
+        result = classify_unified(camera, pc)
+
+        # pitch 25 is not < 25, so focused rule should not fire
+        assert result is None
+
+    def test_pc_idle_60s_boundary(self) -> None:
+        """idle_seconds exactly 60 and is_idle=False -> PC counts as not idle."""
+        camera = make_camera_snapshot(
+            ear_average=0.30,
+            head_pose={"yaw": 5, "pitch": -3},
+            perclos_drowsy=False,
+            yawning=False,
+        )
+        pc = make_pc_snapshot(is_idle=False, idle_seconds=60)
+
+        result = classify_unified(camera, pc)
+
+        # idle_seconds <= 60 and is_idle=False -> pc_not_idle is True
+        assert result is not None
+        assert result.state == "focused"
+        assert result.confidence == 0.9
+
+    def test_pc_idle_61s_blocks_focused(self) -> None:
+        """idle_seconds 61 with is_idle=False -> PC counts as idle."""
+        camera = make_camera_snapshot(
+            ear_average=0.30,
+            head_pose={"yaw": 5, "pitch": -3},
+            perclos_drowsy=False,
+            yawning=False,
+        )
+        pc = make_pc_snapshot(is_idle=False, idle_seconds=61)
+
+        result = classify_unified(camera, pc)
+
+        # idle_seconds > 60 -> pc_not_idle is False -> focused rule blocked
+        assert result is None
+
 
 # ===========================================================================
 # Tests for classify_unified_fallback()
@@ -283,5 +438,87 @@ class TestClassifyUnifiedFallback:
         result = classify_unified_fallback(None, None)
 
         assert result is not None
+        assert result.state == "focused"
+        assert result.confidence == 0.5
+
+    def test_camera_none_pc_high_switches_returns_distracted(self) -> None:
+        """camera=None, pc with high app switches -> distracted."""
+        pc = make_pc_snapshot(app_switches_in_window=8, unique_apps_in_window=6)
+
+        result = classify_unified_fallback(None, pc)
+
+        assert result is not None
+        assert result.state == "distracted"
+        assert result.confidence == 0.6
+
+    def test_camera_none_pc_normal_returns_focused(self) -> None:
+        """camera=None, pc with normal data -> focused (0.5) default."""
+        pc = make_pc_snapshot()
+
+        result = classify_unified_fallback(None, pc)
+
+        assert result is not None
+        assert result.state == "focused"
+        assert result.confidence == 0.5
+
+    def test_drowsy_takes_priority_over_distracted(self) -> None:
+        """When both drowsy and distracted signals, drowsy wins (checked first)."""
+        camera = make_camera_snapshot(
+            ear_average=0.19,
+            perclos_drowsy=True,
+            yawning=True,
+            head_pose={"yaw": 50, "pitch": 10},
+        )
+        pc = make_pc_snapshot(app_switches_in_window=8, unique_apps_in_window=6)
+
+        result = classify_unified_fallback(camera, pc)
+
+        assert result is not None
+        assert result.state == "drowsy"
+
+    def test_fallback_never_returns_none(self) -> None:
+        """Fallback always returns ClassificationResult, never None."""
+        result = classify_unified_fallback(
+            make_camera_snapshot(), make_pc_snapshot()
+        )
+
+        assert result is not None
+        assert isinstance(result, ClassificationResult)
+
+    def test_fallback_source_is_rule(self) -> None:
+        """Fallback results should have source='rule'."""
+        result = classify_unified_fallback(
+            make_camera_snapshot(), make_pc_snapshot()
+        )
+
+        assert result.source == "rule"
+
+    def test_yaw_exactly_45_not_distracted(self) -> None:
+        """yaw exactly 45 is NOT > 45, so should not trigger distracted."""
+        camera = make_camera_snapshot(
+            perclos_drowsy=False,
+            yawning=False,
+            head_pose={"yaw": 45, "pitch": 0},
+        )
+        pc = make_pc_snapshot()
+
+        result = classify_unified_fallback(camera, pc)
+
+        # yaw=45 is not > 45, so distracted rule does not fire
+        assert result.state == "focused"
+        assert result.confidence == 0.5
+
+    def test_app_switches_boundary_not_distracted(self) -> None:
+        """app_switches=6 and unique_apps=4 are NOT > thresholds."""
+        camera = make_camera_snapshot(
+            perclos_drowsy=False,
+            yawning=False,
+            head_pose={"yaw": 3, "pitch": -5},
+        )
+        pc = make_pc_snapshot(app_switches_in_window=6, unique_apps_in_window=4)
+
+        result = classify_unified_fallback(camera, pc)
+
+        # 6 is not > 6 and 4 is not > 4
         assert result.state == "focused"
         assert result.confidence == 0.5
