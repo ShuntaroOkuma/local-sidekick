@@ -28,6 +28,7 @@ from pydantic import BaseModel
 
 from engine.api.cloud_client import (
     cloud_generate_report,
+    cloud_health_check,
     cloud_login,
     cloud_register,
 )
@@ -340,6 +341,22 @@ async def generate_report(
     }
     stats["report_source"] = "local"
     return stats
+
+
+# --- Cloud URL check endpoint ---
+
+
+class CloudUrlCheckRequest(BaseModel):
+    url: str
+
+
+@router.post("/cloud/check-url")
+async def cloud_check_url(body: CloudUrlCheckRequest) -> dict:
+    """Check if a Cloud Run URL is reachable."""
+    ok = await cloud_health_check(body.url)
+    if not ok:
+        raise HTTPException(status_code=400, detail="Cloud Run URLに接続できません")
+    return {"status": "ok"}
 
 
 # --- Cloud auth endpoints ---
