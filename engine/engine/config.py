@@ -55,7 +55,6 @@ class EngineConfig:
     working_hours_end: str = "19:00"
 
     # Notification settings
-    max_notifications_per_day: int = 6
     drowsy_cooldown_minutes: int = 15
     distracted_cooldown_minutes: int = 20
     over_focus_cooldown_minutes: int = 30

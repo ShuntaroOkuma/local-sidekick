@@ -13,7 +13,6 @@ router = APIRouter()
 DEFAULT_SETTINGS: dict = {
     "working_hours_start": "09:00",
     "working_hours_end": "19:00",
-    "max_notifications_per_day": 6,
     "camera_enabled": True,
     "sync_enabled": True,
 }
