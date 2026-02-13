@@ -1,6 +1,6 @@
 """Notification engine for drowsy/distracted/over-focus alerts.
 
-Implements three notification types with cooldown and daily limits:
+Implements three notification types with cooldown:
 - drowsy: continuous drowsy state for 120s, cooldown 15min
 - distracted: continuous distracted state for 120s, cooldown 20min
 - over_focus: 80+ minutes focused in last 90 minutes, cooldown 30min
@@ -46,7 +46,6 @@ class NotificationEngine:
         drowsy_cooldown_minutes: Cooldown after drowsy notification.
         distracted_cooldown_minutes: Cooldown after distracted notification.
         over_focus_cooldown_minutes: Cooldown after over_focus notification.
-        max_notifications_per_day: Maximum notifications per calendar day.
     """
 
     def __init__(
@@ -58,7 +57,6 @@ class NotificationEngine:
         drowsy_cooldown_minutes: int = 15,
         distracted_cooldown_minutes: int = 20,
         over_focus_cooldown_minutes: int = 30,
-        max_notifications_per_day: int = 6,
     ) -> None:
         self._drowsy_trigger = drowsy_trigger_seconds
         self._distracted_trigger = distracted_trigger_seconds
@@ -69,14 +67,11 @@ class NotificationEngine:
             "distracted": distracted_cooldown_minutes * 60,
             "over_focus": over_focus_cooldown_minutes * 60,
         }
-        self._max_per_day = max_notifications_per_day
 
         # State tracking
         self._consecutive_state: Optional[str] = None
         self._consecutive_start: float = 0.0
         self._last_notification_time: dict[str, float] = {}
-        self._today_count: int = 0
-        self._today_date: Optional[str] = None
 
         # History of states for over_focus calculation
         # Stores (timestamp, state, duration_seconds)
@@ -85,14 +80,6 @@ class NotificationEngine:
         # All notifications triggered
         self.notifications: list[Notification] = []
 
-    def _reset_day_if_needed(self, now: float) -> None:
-        """Reset daily counter if the date has changed."""
-        import datetime
-        today = datetime.date.today().isoformat()
-        if self._today_date != today:
-            self._today_date = today
-            self._today_count = 0
-
     def _is_on_cooldown(self, notification_type: str, now: float) -> bool:
         """Check if a notification type is still on cooldown."""
         last_time = self._last_notification_time.get(notification_type, 0.0)
@@ -100,13 +87,8 @@ class NotificationEngine:
         return (now - last_time) < cooldown
 
     def _can_notify(self, notification_type: str, now: float) -> bool:
-        """Check if we can send a notification (cooldown + daily limit)."""
-        self._reset_day_if_needed(now)
-        if self._today_count >= self._max_per_day:
-            return False
-        if self._is_on_cooldown(notification_type, now):
-            return False
-        return True
+        """Check if we can send a notification (cooldown check)."""
+        return not self._is_on_cooldown(notification_type, now)
 
     def _trigger(self, notification_type: str, now: float) -> Notification:
         """Create and record a notification."""
@@ -116,13 +98,8 @@ class NotificationEngine:
             timestamp=now,
         )
         self._last_notification_time[notification_type] = now
-        self._today_count += 1
         self.notifications.append(notification)
-        logger.info(
-            "Notification triggered: %s (total today: %d)",
-            notification_type,
-            self._today_count,
-        )
+        logger.info("Notification triggered: %s", notification_type)
         return notification
 
     def _check_over_focus(self, now: float) -> Optional[Notification]:

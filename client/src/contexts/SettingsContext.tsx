@@ -5,7 +5,6 @@ import type { Settings } from "../lib/types";
 const DEFAULT_SETTINGS: Settings = {
   working_hours_start: "09:00",
   working_hours_end: "19:00",
-  max_notifications_per_day: 6,
   camera_enabled: true,
   model_tier: "lightweight",
   sync_enabled: true,
