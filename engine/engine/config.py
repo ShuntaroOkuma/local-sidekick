@@ -79,6 +79,9 @@ class EngineConfig:
     pc_estimation_interval: float = 30.0
     integration_interval: float = 5.0
 
+    # Avatar settings
+    avatar_enabled: bool = True
+
     # Server settings
     engine_port: int = 18080
     sync_enabled: bool = False

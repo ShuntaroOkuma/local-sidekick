@@ -54,6 +54,7 @@ class SettingsResponse(BaseModel):
     camera_index: int
     model_tier: str
     sync_enabled: bool
+    avatar_enabled: bool
     drowsy_cooldown_minutes: int
     distracted_cooldown_minutes: int
     over_focus_cooldown_minutes: int
@@ -71,6 +72,7 @@ class SettingsUpdate(BaseModel):
     camera_index: Optional[int] = None
     model_tier: Optional[str] = None
     sync_enabled: Optional[bool] = None
+    avatar_enabled: Optional[bool] = None
     drowsy_cooldown_minutes: Optional[int] = None
     distracted_cooldown_minutes: Optional[int] = None
     over_focus_cooldown_minutes: Optional[int] = None
@@ -192,22 +194,7 @@ async def get_daily_stats(
 async def get_settings() -> SettingsResponse:
     """Get current engine settings."""
     config = load_config()
-    return SettingsResponse(
-        working_hours_start=config.working_hours_start,
-        working_hours_end=config.working_hours_end,
-        max_notifications_per_day=config.max_notifications_per_day,
-        camera_enabled=config.camera_enabled,
-        camera_index=config.camera_index,
-        model_tier=config.model_tier,
-        sync_enabled=config.sync_enabled,
-        drowsy_cooldown_minutes=config.drowsy_cooldown_minutes,
-        distracted_cooldown_minutes=config.distracted_cooldown_minutes,
-        over_focus_cooldown_minutes=config.over_focus_cooldown_minutes,
-        drowsy_trigger_seconds=config.drowsy_trigger_seconds,
-        distracted_trigger_seconds=config.distracted_trigger_seconds,
-        over_focus_window_minutes=config.over_focus_window_minutes,
-        over_focus_threshold_minutes=config.over_focus_threshold_minutes,
-    )
+    return _config_to_response(config)
 
 
 @router.put("/settings", response_model=SettingsResponse)
@@ -231,6 +218,11 @@ async def update_settings(update: SettingsUpdate) -> SettingsResponse:
     if apply_callback is not None:
         await apply_callback(config)
 
+    return _config_to_response(config)
+
+
+def _config_to_response(config: EngineConfig) -> SettingsResponse:
+    """Convert an EngineConfig to a SettingsResponse."""
     return SettingsResponse(
         working_hours_start=config.working_hours_start,
         working_hours_end=config.working_hours_end,
@@ -239,6 +231,7 @@ async def update_settings(update: SettingsUpdate) -> SettingsResponse:
         camera_index=config.camera_index,
         model_tier=config.model_tier,
         sync_enabled=config.sync_enabled,
+        avatar_enabled=config.avatar_enabled,
         drowsy_cooldown_minutes=config.drowsy_cooldown_minutes,
         distracted_cooldown_minutes=config.distracted_cooldown_minutes,
         over_focus_cooldown_minutes=config.over_focus_cooldown_minutes,

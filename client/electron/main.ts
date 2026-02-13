@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, powerMonitor } from "electron";
 import { join } from "path";
+import { readFileSync } from "fs";
 import { createTray, updateTrayIcon } from "./tray";
 import { PythonBridge } from "./python-bridge";
 import { showNotification, setAvatarEnabled, isAvatarEnabled } from "./notification";
@@ -10,6 +11,18 @@ import {
   showAvatarWindow,
   hideAvatarWindow,
 } from "./avatar-window";
+
+/** Read avatar_enabled from ~/.local-sidekick/config.json (before engine starts). */
+function readAvatarEnabledFromConfig(): boolean {
+  try {
+    const configPath = join(app.getPath("home"), ".local-sidekick", "config.json");
+    const data = JSON.parse(readFileSync(configPath, "utf-8"));
+    return data.avatar_enabled !== false; // default true
+  } catch (err) {
+    console.warn("Failed to read avatar config, using default:", err);
+    return true;
+  }
+}
 
 let mainWindow: BrowserWindow | null = null;
 let avatarWin: BrowserWindow | null = null;
@@ -123,7 +136,8 @@ function stopStatePolling(): void {
 app.whenReady().then(async () => {
   mainWindow = createWindow();
 
-  // Create avatar overlay window
+  // Create avatar overlay window (respect persisted setting)
+  const savedAvatarEnabled = readAvatarEnabledFromConfig();
   avatarWin = createAvatarWindow();
   if (process.env.ELECTRON_RENDERER_URL) {
     // In dev, replace index.html with avatar.html in the dev server URL
@@ -136,8 +150,10 @@ app.whenReady().then(async () => {
     avatarWin.loadFile(join(__dirname, "../dist/src/avatar/avatar.html"));
   }
   avatarWin.once("ready-to-show", () => {
-    avatarWin?.show();
-    setAvatarEnabled(true);
+    setAvatarEnabled(savedAvatarEnabled);
+    if (savedAvatarEnabled) {
+      avatarWin?.show();
+    }
   });
 
   // Create tray
@@ -161,12 +177,24 @@ app.whenReady().then(async () => {
     return isAvatarEnabled();
   });
 
-  ipcMain.handle("set-avatar-enabled", (_event, enabled: boolean) => {
+  ipcMain.handle("set-avatar-enabled", async (_event, enabled: boolean) => {
     setAvatarEnabled(enabled);
     if (enabled) {
       showAvatarWindow();
     } else {
       hideAvatarWindow();
+    }
+    // Persist to engine config
+    const port = pythonBridge?.getPort() ?? 18080;
+    try {
+      await fetch(`http://localhost:${port}/api/settings`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatar_enabled: enabled }),
+      });
+    } catch (err) {
+      // Engine may not be running yet; the save button in Settings will also persist
+      console.warn("Failed to persist avatar setting to engine:", err);
     }
   });
 
