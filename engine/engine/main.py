@@ -1,9 +1,9 @@
 """FastAPI entry point for the Local Sidekick Engine.
 
 Runs on localhost:18080. Manages background monitoring tasks for:
-- Camera capture + feature extraction + state estimation
-- PC usage monitoring + state classification
-- State integration (camera + PC)
+- Camera capture + feature extraction + snapshot storage
+- PC usage monitoring + snapshot storage
+- Unified classification (rule-based -> LLM -> fallback)
 - Notification evaluation
 - History recording
 - WebSocket broadcasting
@@ -33,11 +33,12 @@ from engine.api.websocket import (
     router as ws_router,
 )
 from engine.config import EngineConfig, load_config
-from engine.estimation.integrator import StateIntegrator
+from engine.estimation.integrator import build_integrated_state
+from engine.estimation.prompts import UNIFIED_SYSTEM_PROMPT, format_unified_prompt
 from engine.estimation.rule_classifier import (
     ClassificationResult,
-    classify_camera_text,
-    classify_pc_usage,
+    classify_unified,
+    classify_unified_fallback,
 )
 from engine.history.store import HistoryStore
 from engine.notification.engine import NotificationEngine
@@ -51,13 +52,12 @@ _should_monitor = False
 _paused = False  # True when system is suspended (e.g. lid closed)
 _config: EngineConfig = EngineConfig()
 
-# Latest classification results (updated by background tasks)
-_latest_camera_state: Optional[ClassificationResult] = None
-_latest_pc_state: Optional[ClassificationResult] = None
+# Latest raw snapshots (updated by camera/PC loops, consumed by integration loop)
+_latest_camera_snapshot: Optional[dict] = None  # TrackerSnapshot.to_dict()
+_latest_pc_snapshot: Optional[dict] = None  # UsageSnapshot.to_dict()
 
 # Components
 _history_store = HistoryStore()
-_integrator = StateIntegrator()
 _notification_engine: Optional[NotificationEngine] = None
 _shared_llm_backend = None  # Shared LLM instance to avoid loading model twice
 _llm_lock = asyncio.Lock()  # Lock for thread-safe LLM access
@@ -140,13 +140,13 @@ def _create_notification_engine(config: EngineConfig) -> NotificationEngine:
 
 
 async def _camera_loop() -> None:
-    """Background task: camera capture + feature extraction + classification.
+    """Background task: camera capture + feature extraction + snapshot storage.
 
-    Runs at ~5fps (200ms interval) for frame capture, with state
-    classification every estimation_interval seconds.
+    Runs at ~5fps (200ms interval) for frame capture. Stores raw snapshots
+    every estimation_interval seconds for the integration loop to classify.
     Reads from global _config so settings changes take effect dynamically.
     """
-    global _latest_camera_state
+    global _latest_camera_snapshot
 
     if not _config.camera_enabled:
         logger.info("Camera disabled in config, skipping camera loop.")
@@ -208,47 +208,7 @@ async def _camera_loop() -> None:
             now = time.monotonic()
             if now - last_estimation >= _config.estimation_interval:
                 last_estimation = now
-                snapshot_dict = snapshot.to_dict()
-
-                # Try rule-based classification first
-                rule_result = classify_camera_text(snapshot_dict)
-                if rule_result is not None:
-                    _latest_camera_state = rule_result
-                else:
-                    # LLM fallback using shared instance
-                    llm = await _get_shared_llm(_config)
-                    if llm is None:
-                        _latest_camera_state = ClassificationResult(
-                            state="focused",
-                            confidence=0.5,
-                            reasoning="LLM unavailable, defaulting",
-                            source="fallback",
-                        )
-                        continue
-
-                    from engine.estimation.prompts import (
-                        TEXT_SYSTEM_PROMPT,
-                        format_text_prompt,
-                    )
-
-                    features_json = snapshot.to_json()
-                    user_prompt = format_text_prompt(features_json)
-
-                    try:
-                        async with _llm_lock:
-                            result = await asyncio.to_thread(
-                                llm.classify,
-                                TEXT_SYSTEM_PROMPT,
-                                user_prompt,
-                            )
-                        _latest_camera_state = ClassificationResult(
-                            state=result.get("state", "unknown"),
-                            confidence=result.get("confidence", 0.5),
-                            reasoning=result.get("reasoning", ""),
-                            source="llm",
-                        )
-                    except Exception as e:
-                        logger.error("LLM inference failed: %s", e)
+                _latest_camera_snapshot = snapshot.to_dict()
 
             await asyncio.sleep(_config.camera_frame_interval)
     finally:
@@ -260,12 +220,13 @@ async def _camera_loop() -> None:
 
 
 async def _pc_monitor_loop() -> None:
-    """Background task: PC usage monitoring + classification.
+    """Background task: PC usage monitoring + snapshot storage.
 
-    PC monitor runs continuously; snapshots taken at pc_estimation_interval.
+    PC monitor runs continuously; stores raw snapshots at pc_estimation_interval
+    for the integration loop to classify.
     Reads from global _config so settings changes take effect dynamically.
     """
-    global _latest_pc_state
+    global _latest_pc_snapshot
 
     try:
         from engine.pcusage.monitor import PCUsageMonitor
@@ -295,47 +256,7 @@ async def _pc_monitor_loop() -> None:
                     await asyncio.sleep(_config.pc_poll_interval)
                     continue
 
-                snapshot_dict = snapshot.to_dict()
-
-                # Try rule-based classification first
-                rule_result = classify_pc_usage(snapshot_dict)
-                if rule_result is not None:
-                    _latest_pc_state = rule_result
-                else:
-                    # LLM fallback using shared instance
-                    llm = await _get_shared_llm(_config)
-                    if llm is None:
-                        _latest_pc_state = ClassificationResult(
-                            state="focused",
-                            confidence=0.5,
-                            reasoning="LLM unavailable, defaulting",
-                            source="fallback",
-                        )
-                        continue
-
-                    from engine.estimation.prompts import (
-                        PC_USAGE_SYSTEM_PROMPT,
-                        format_pc_usage_prompt,
-                    )
-
-                    usage_json = json.dumps(snapshot_dict, indent=2)
-                    user_prompt = format_pc_usage_prompt(usage_json)
-
-                    try:
-                        async with _llm_lock:
-                            result = await asyncio.to_thread(
-                                llm.classify,
-                                PC_USAGE_SYSTEM_PROMPT,
-                                user_prompt,
-                            )
-                        _latest_pc_state = ClassificationResult(
-                            state=result.get("state", "unknown"),
-                            confidence=result.get("confidence", 0.5),
-                            reasoning=result.get("reasoning", ""),
-                            source="llm",
-                        )
-                    except Exception as e:
-                        logger.error("LLM inference failed for PC: %s", e)
+                _latest_pc_snapshot = snapshot.to_dict()
 
             await asyncio.sleep(_config.pc_poll_interval)
     finally:
@@ -346,8 +267,11 @@ async def _pc_monitor_loop() -> None:
 
 
 async def _integration_loop() -> None:
-    """Background task: integrate states, check notifications, record history.
+    """Background task: unified classification, notifications, history.
 
+    Consumes raw snapshots from camera/PC loops and runs unified
+    classification (rule-based -> LLM -> fallback) to produce a single
+    integrated state.
     Reads from global _config so settings changes take effect dynamically.
     """
     global _notification_engine
@@ -359,20 +283,45 @@ async def _integration_loop() -> None:
             await asyncio.sleep(1.0)
             continue
 
-        camera_state = _latest_camera_state
-        pc_state = _latest_pc_state
+        camera_snap = _latest_camera_snapshot
+        pc_snap = _latest_pc_snapshot
 
-        # Skip integration when no data is available yet (e.g. right after resume)
-        if camera_state is None and pc_state is None:
+        # Skip when no data is available yet (e.g. right after resume)
+        if camera_snap is None and pc_snap is None:
             await asyncio.sleep(_config.integration_interval)
             continue
 
-        integrated = _integrator.integrate(
-            camera_state=camera_state.state if camera_state else None,
-            camera_confidence=camera_state.confidence if camera_state else 0.0,
-            pc_state=pc_state.state if pc_state else None,
-            pc_confidence=pc_state.confidence if pc_state else 0.0,
-        )
+        # 1. Unified rule-based classification (clear cases)
+        rule_result = classify_unified(camera_snap, pc_snap)
+        if rule_result is not None:
+            final = rule_result
+        else:
+            # 2. Unified LLM classification (ambiguous cases)
+            llm = await _get_shared_llm(_config)
+            if llm is None:
+                final = classify_unified_fallback(camera_snap, pc_snap)
+            else:
+                camera_json = json.dumps(camera_snap, indent=2) if camera_snap else "(unavailable)"
+                pc_json = json.dumps(pc_snap, indent=2) if pc_snap else "(unavailable)"
+                user_prompt = format_unified_prompt(camera_json, pc_json)
+
+                try:
+                    async with _llm_lock:
+                        result = await asyncio.to_thread(
+                            llm.classify, UNIFIED_SYSTEM_PROMPT, user_prompt,
+                        )
+                    final = ClassificationResult(
+                        state=result.get("state", "unknown"),
+                        confidence=result.get("confidence", 0.5),
+                        reasoning=result.get("reasoning", ""),
+                        source="llm",
+                    )
+                except Exception as e:
+                    logger.error("Unified LLM inference failed: %s", e)
+                    final = classify_unified_fallback(camera_snap, pc_snap)
+
+        # Build IntegratedState (API-compatible wrapper)
+        integrated = build_integrated_state(final, camera_snap, pc_snap)
 
         # Update shared state for API
         state_data = integrated.to_dict()
@@ -382,19 +331,13 @@ async def _integration_loop() -> None:
         await broadcast_state(state_data)
 
         # Record to history
-        source = "rule"
-        if camera_state and camera_state.source == "llm":
-            source = "llm"
-        elif pc_state and pc_state.source == "llm":
-            source = "llm"
-
         await _history_store.log_state(
             timestamp=integrated.timestamp,
             camera_state=integrated.camera_state,
             pc_state=integrated.pc_state,
             integrated_state=integrated.state,
             confidence=integrated.confidence,
-            source=source,
+            source=final.source,
         )
 
         # Check for notifications
@@ -437,15 +380,15 @@ async def apply_config(new_config: EngineConfig) -> None:
 
 async def start_monitoring() -> None:
     """Start all monitoring background tasks."""
-    global _should_monitor, _config, _latest_camera_state, _latest_pc_state
+    global _should_monitor, _config, _latest_camera_snapshot, _latest_pc_snapshot
 
     if _should_monitor:
         return
 
     _config = load_config()
     _should_monitor = True
-    _latest_camera_state = None
-    _latest_pc_state = None
+    _latest_camera_snapshot = None
+    _latest_pc_snapshot = None
 
     set_engine_state("monitoring", True)
     set_engine_state("start_time", time.time())
@@ -474,14 +417,14 @@ async def pause_monitoring() -> None:
 
 async def resume_monitoring() -> None:
     """Resume monitoring after pause. Resets consecutive state tracking."""
-    global _paused, _latest_camera_state, _latest_pc_state
+    global _paused, _latest_camera_snapshot, _latest_pc_snapshot
 
     if not _paused:
         return
 
-    # Reset latest states so stale data from before sleep isn't used
-    _latest_camera_state = None
-    _latest_pc_state = None
+    # Reset latest snapshots so stale data from before sleep isn't used
+    _latest_camera_snapshot = None
+    _latest_pc_snapshot = None
 
     # Reset notification engine consecutive state so sleep duration
     # doesn't count toward distracted/drowsy thresholds
