@@ -33,6 +33,7 @@ export interface DailyStats {
   away_minutes: number;
   notification_count: number;
   report?: DailyReport;
+  report_source?: "local" | "cloud";
 }
 
 export interface DailyReport {
@@ -40,7 +41,6 @@ export interface DailyReport {
   highlights: string[];
   concerns: string[];
   tomorrow_tip: string;
-  report_source?: "local" | "cloud";
 }
 
 export type ModelTier = "none" | "lightweight" | "recommended";
