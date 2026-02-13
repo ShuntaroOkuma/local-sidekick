@@ -1,0 +1,116 @@
+name: Build Desktop App
+
+on:
+  workflow_dispatch:
+    inputs:
+      platforms:
+        description: "Platforms to build"
+        required: true
+        default: "macos"
+        type: choice
+        options:
+          - macos
+          - windows
+          - linux
+          - all
+
+permissions:
+  contents: write
+
+jobs:
+  build-macos:
+    if: >-
+      github.event.inputs.platforms == 'macos' ||
+      github.event.inputs.platforms == 'all'
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - uses: actions/cache@v4
+        with:
+          path: .cache
+          key: pbs-macos-arm64-3.12.12
+      - run: npm ci
+        working-directory: client
+      - run: bash scripts/build-engine.sh
+      - run: npx electron-vite build
+        working-directory: client
+      - run: npx electron-builder --publish never
+        working-directory: client
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: local-sidekick-macos
+          path: client/release/*.dmg
+          if-no-files-found: error
+          retention-days: 30
+
+  build-windows:
+    if: >-
+      github.event.inputs.platforms == 'windows' ||
+      github.event.inputs.platforms == 'all'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - uses: actions/cache@v4
+        with:
+          path: .cache
+          key: pbs-windows-x64-3.12.12
+      - run: npm ci
+        working-directory: client
+      - run: bash scripts/build-engine.sh
+        shell: bash
+      - run: npx electron-vite build
+        working-directory: client
+      - run: npx electron-builder --publish never
+        working-directory: client
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: local-sidekick-windows
+          path: client/release/*.exe
+          if-no-files-found: error
+          retention-days: 30
+
+  build-linux:
+    if: >-
+      github.event.inputs.platforms == 'linux' ||
+      github.event.inputs.platforms == 'all'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+      - uses: actions/cache@v4
+        with:
+          path: .cache
+          key: pbs-linux-x64-3.12.12
+      - run: npm ci
+        working-directory: client
+      - run: bash scripts/build-engine.sh
+      - run: npx electron-vite build
+        working-directory: client
+      - run: npx electron-builder --publish never
+        working-directory: client
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: local-sidekick-linux
+          path: client/release/*.AppImage
+          if-no-files-found: error
+          retention-days: 30

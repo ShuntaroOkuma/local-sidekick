@@ -3,6 +3,8 @@ import { copyFileSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import { app } from "electron";
 
+const IS_WINDOWS = process.platform === "win32";
+
 export class PythonBridge {
   private process: ChildProcess | null = null;
   private port: number = 18080;
@@ -15,13 +17,17 @@ export class PythonBridge {
 
     if (app.isPackaged) {
       // Packaged: standalone Python + engine bundled in Resources/
-      this.pythonPath = join(resourcesPath, "python", "bin", "python3");
+      this.pythonPath = IS_WINDOWS
+        ? join(resourcesPath, "python", "python.exe")
+        : join(resourcesPath, "python", "bin", "python3");
       this.enginePath = join(resourcesPath, "engine");
     } else {
       // Development: use venv
       const appRoot = join(__dirname, "../..");
-      this.pythonPath =
-        process.env.PYTHON_PATH || join(appRoot, "engine/.venv/bin/python");
+      const defaultPython = IS_WINDOWS
+        ? join(appRoot, "engine", ".venv", "Scripts", "python.exe")
+        : join(appRoot, "engine", ".venv", "bin", "python");
+      this.pythonPath = process.env.PYTHON_PATH || defaultPython;
       this.enginePath = process.env.ENGINE_PATH || join(appRoot, "engine");
     }
 
@@ -146,8 +152,13 @@ export class PythonBridge {
 
       // Set up force-kill timeout
       const killTimeout = setTimeout(() => {
-        console.log("Force killing Python Engine (SIGKILL)");
-        proc.kill("SIGKILL");
+        console.log("Force killing Python Engine");
+        if (IS_WINDOWS) {
+          // SIGKILL is not supported on Windows; use taskkill
+          spawn("taskkill", ["/pid", String(proc.pid), "/f", "/t"]);
+        } else {
+          proc.kill("SIGKILL");
+        }
         this.process = null;
         resolve();
       }, 5000);
