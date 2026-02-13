@@ -13,6 +13,10 @@ on:
           - windows
           - linux
           - all
+      version:
+        description: "Release version (e.g. v0.1.0). Leave empty for artifact-only build."
+        required: false
+        type: string
 
 permissions:
   contents: write
@@ -114,3 +118,32 @@ jobs:
           path: client/release/*.AppImage
           if-no-files-found: error
           retention-days: 30
+
+  release:
+    # Run when version is specified, even if some build jobs were skipped
+    # (not all platforms selected). Fail only if a build that ran failed.
+    if: >-
+      always() &&
+      github.event.inputs.version != '' &&
+      !failure() && !cancelled()
+    needs: [build-macos, build-windows, build-linux]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+      - name: List downloaded files
+        run: ls -lhR artifacts/
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.version }}
+          name: Local Sidekick ${{ github.event.inputs.version }}
+          draft: false
+          prerelease: false
+          files: |
+            artifacts/*.dmg
+            artifacts/*.exe
+            artifacts/*.AppImage
+          generate_release_notes: true
