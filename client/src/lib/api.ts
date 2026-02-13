@@ -111,6 +111,13 @@ export const api = {
   deleteModel: (modelId: string): Promise<{ status: string; message: string }> =>
     request(`/api/models/${modelId}`, { method: "DELETE" }),
 
+  // Cloud URL check
+  cloudCheckUrl: (url: string): Promise<{ status: string }> =>
+    request("/api/cloud/check-url", {
+      method: "POST",
+      body: JSON.stringify({ url }),
+    }),
+
   // Cloud authentication
   cloudLogin: (email: string, password: string): Promise<CloudAuthResponse> =>
     request("/api/cloud/login", {
