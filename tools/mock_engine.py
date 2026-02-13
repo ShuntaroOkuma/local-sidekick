@@ -13,6 +13,9 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 clients: list[WebSocket] = []
 current_state = {"state": "idle", "confidence": 0.5, "timestamp": time.time()}
 
+# Pending notifications queue (consumed by Electron polling)
+pending_notifications_queue: list[dict] = []
+
 @app.get("/api/health")
 async def health():
     return {"status": "ok", "monitoring": True, "uptime_seconds": 0}
@@ -23,7 +26,10 @@ async def get_state():
 
 @app.get("/api/notifications/pending")
 async def pending_notifications():
-    return []
+    """Return and drain pending notifications (consumed by Electron polling)."""
+    notifications = list(pending_notifications_queue)
+    pending_notifications_queue.clear()
+    return notifications
 
 @app.websocket("/ws/state")
 async def ws_state(websocket: WebSocket):
@@ -69,6 +75,12 @@ async def send_notification(notif_type: str):
         "timestamp": time.time(),
     }
     await broadcast(data)
+    # Also enqueue for Electron HTTP polling (/api/notifications/pending)
+    pending_notifications_queue.append({
+        "type": notif_type,
+        "message": data["message"],
+        "timestamp": data["timestamp"],
+    })
     return {"sent": notif_type}
 
 if __name__ == "__main__":

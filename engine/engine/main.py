@@ -173,21 +173,24 @@ async def _camera_loop() -> None:
 
     try:
         while _should_monitor:
-            if _paused:
+            if _paused or not _config.camera_enabled:
                 # Release camera hardware so the green LED turns off
                 if camera_open:
                     await asyncio.to_thread(camera.close)
                     camera_open = False
-                    logger.info("Camera released for system sleep.")
+                    if _paused:
+                        logger.info("Camera released for system sleep.")
+                    else:
+                        logger.info("Camera released (disabled via settings).")
                 await asyncio.sleep(1.0)
                 continue
 
-            # Re-open camera after resume
+            # Re-open camera after resume or re-enable
             if not camera_open:
                 try:
                     await asyncio.to_thread(camera.open)
                     camera_open = True
-                    logger.info("Camera re-opened after resume.")
+                    logger.info("Camera re-opened.")
                 except RuntimeError as e:
                     logger.warning("Camera re-open failed: %s", e)
                     await asyncio.sleep(2.0)
