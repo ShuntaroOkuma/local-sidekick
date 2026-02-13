@@ -132,7 +132,6 @@ def _create_notification_engine(config: EngineConfig) -> NotificationEngine:
         drowsy_cooldown_minutes=config.drowsy_cooldown_minutes,
         distracted_cooldown_minutes=config.distracted_cooldown_minutes,
         over_focus_cooldown_minutes=config.over_focus_cooldown_minutes,
-        max_notifications_per_day=config.max_notifications_per_day,
     )
 
 

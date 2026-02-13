@@ -84,31 +84,6 @@ export function Settings() {
           </div>
         </div>
 
-        {/* Notification limit */}
-        <div className="bg-gray-800/50 rounded-xl p-5">
-          <h2 className="text-sm font-semibold text-gray-300 mb-3">
-            通知上限（回/日）
-          </h2>
-          <div className="flex items-center gap-4">
-            <input
-              type="range"
-              min="0"
-              max="20"
-              value={form.max_notifications_per_day}
-              onChange={(e) =>
-                setForm({
-                  ...form,
-                  max_notifications_per_day: parseInt(e.target.value),
-                })
-              }
-              className="flex-1 accent-blue-500"
-            />
-            <span className="text-sm text-gray-300 w-8 text-center font-mono">
-              {form.max_notifications_per_day}
-            </span>
-          </div>
-        </div>
-
         {/* Avatar toggle */}
         <div className="bg-gray-800/50 rounded-xl p-5">
           <div className="flex items-center justify-between">

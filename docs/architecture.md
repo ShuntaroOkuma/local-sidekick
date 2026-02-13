@@ -239,8 +239,6 @@ PoCのコードを再構成して常駐サービス化する。
 | distracted | 最終判定distracted連続120秒           | 20分         |
 | over_focus | 直近90分内で最終判定focusedが80分以上 | 30分         |
 
-通知上限: 設定で1日最大N回（デフォルト6回）
-
 #### 履歴ストア (history/store.py)
 
 SQLite (`~/.local-sidekick/history.db`):
@@ -335,7 +333,6 @@ class PythonBridge {
 #### 設定画面 (Settings.tsx)
 
 - 稼働時間（開始/終了）
-- 通知上限（回/日）
 - カメラON/OFF
 - サーバ同期ON/OFF
 - アカウント連携
@@ -402,7 +399,6 @@ users/{userId}
 users/{userId}/settings
   - working_hours_start: "09:00"
   - working_hours_end: "19:00"
-  - max_notifications_per_day: 6
   - camera_enabled: true
   - sync_enabled: true
 

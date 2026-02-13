@@ -58,7 +58,6 @@ export interface ModelInfo {
 export interface Settings {
   working_hours_start: string;
   working_hours_end: string;
-  max_notifications_per_day: number;
   camera_enabled: boolean;
   model_tier: ModelTier;
   sync_enabled: boolean;
