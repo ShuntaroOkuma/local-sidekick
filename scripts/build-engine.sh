@@ -89,6 +89,11 @@ echo "  Python: $("${PYTHON_BIN}" --version)"
 
 # --- Step 4: Install engine dependencies ---
 echo "[3/5] Installing engine dependencies..."
+
+# Disable native CPU optimizations for llama-cpp-python so it builds on any
+# CI runner (GitHub Actions macos runners may lack i8mm/sve instructions).
+export CMAKE_ARGS="-DGGML_NATIVE=OFF"
+
 "${PYTHON_BIN}" -m pip install --no-cache-dir --quiet --upgrade pip
 "${PYTHON_BIN}" -m pip install --no-cache-dir --quiet "${ENGINE_SRC}[${PIP_EXTRAS}]"
 
