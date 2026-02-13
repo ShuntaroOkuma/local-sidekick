@@ -73,8 +73,8 @@ export interface CloudAuthRequest {
 }
 
 export interface CloudAuthResponse {
-  access_token: string;
-  cloud_auth_email: string;
+  status: string;
+  email: string;
 }
 
 export interface ElectronAPI {
