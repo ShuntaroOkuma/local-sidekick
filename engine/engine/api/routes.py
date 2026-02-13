@@ -11,19 +11,30 @@ Endpoints:
     POST /api/engine/stop     -> Stop monitoring
     POST /api/engine/pause    -> Pause monitoring (system sleep)
     POST /api/engine/resume   -> Resume monitoring (system wake)
+    POST /api/cloud/login     -> Login to Cloud Run
+    POST /api/cloud/register  -> Register on Cloud Run
+    POST /api/cloud/logout    -> Clear cloud auth
 """
 
 from __future__ import annotations
 
 import datetime
+import logging
 import time
 from typing import Optional
 
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel
 
+from engine.api.cloud_client import (
+    cloud_generate_report,
+    cloud_login,
+    cloud_register,
+)
 from engine.config import EngineConfig, load_config, save_config
 from engine.history.aggregator import compute_daily_stats
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api")
 
@@ -61,6 +72,8 @@ class SettingsResponse(BaseModel):
     distracted_trigger_seconds: int
     over_focus_window_minutes: int
     over_focus_threshold_minutes: int
+    cloud_run_url: str = ""
+    cloud_auth_email: str = ""
 
 
 class SettingsUpdate(BaseModel):
@@ -78,6 +91,7 @@ class SettingsUpdate(BaseModel):
     distracted_trigger_seconds: Optional[int] = None
     over_focus_window_minutes: Optional[int] = None
     over_focus_threshold_minutes: Optional[int] = None
+    cloud_run_url: Optional[str] = None
 
 
 class EngineActionResponse(BaseModel):
@@ -219,6 +233,11 @@ async def update_settings(update: SettingsUpdate) -> SettingsResponse:
     return _config_to_response(config)
 
 
+class CloudAuthRequest(BaseModel):
+    email: str
+    password: str
+
+
 def _config_to_response(config: EngineConfig) -> SettingsResponse:
     """Convert an EngineConfig to a SettingsResponse."""
     return SettingsResponse(
@@ -236,6 +255,8 @@ def _config_to_response(config: EngineConfig) -> SettingsResponse:
         distracted_trigger_seconds=config.distracted_trigger_seconds,
         over_focus_window_minutes=config.over_focus_window_minutes,
         over_focus_threshold_minutes=config.over_focus_threshold_minutes,
+        cloud_run_url=config.cloud_run_url,
+        cloud_auth_email=config.cloud_auth_email,
     )
 
 
@@ -299,15 +320,76 @@ async def generate_report(
 
     stats = await compute_daily_stats(store, date)
 
-    # For MVP, return local stats as the "report"
-    # TODO: proxy to Cloud Run when sync_enabled
+    config = load_config()
+    if config.sync_enabled and config.cloud_run_url and config.cloud_auth_token:
+        report = await cloud_generate_report(
+            config.cloud_run_url, config.cloud_auth_token, stats,
+        )
+        if report is not None:
+            stats["report"] = report
+            stats["report_source"] = "cloud"
+            return stats
+        logger.warning("Cloud report failed, falling back to local")
+
+    # Local fallback
     stats["report"] = {
         "summary": f"本日の作業統計: 集中 {stats.get('focused_minutes', 0):.0f}分",
         "highlights": [],
         "concerns": [],
         "tomorrow_tip": "明日も頑張りましょう！",
     }
+    stats["report_source"] = "local"
     return stats
+
+
+# --- Cloud auth endpoints ---
+
+
+@router.post("/cloud/login")
+async def cloud_login_endpoint(body: CloudAuthRequest) -> dict:
+    """Login to Cloud Run and save the JWT token to config."""
+    config = load_config()
+    if not config.cloud_run_url:
+        raise HTTPException(status_code=400, detail="cloud_run_url not configured")
+
+    result = await cloud_login(config.cloud_run_url, body.email, body.password)
+    if result is None:
+        raise HTTPException(status_code=401, detail="Cloud login failed")
+
+    config.cloud_auth_token = result["access_token"]
+    config.cloud_auth_email = body.email
+    save_config(config)
+
+    return {"status": "ok", "email": body.email}
+
+
+@router.post("/cloud/register")
+async def cloud_register_endpoint(body: CloudAuthRequest) -> dict:
+    """Register on Cloud Run and save the JWT token to config."""
+    config = load_config()
+    if not config.cloud_run_url:
+        raise HTTPException(status_code=400, detail="cloud_run_url not configured")
+
+    result = await cloud_register(config.cloud_run_url, body.email, body.password)
+    if result is None:
+        raise HTTPException(status_code=400, detail="Cloud registration failed")
+
+    config.cloud_auth_token = result["access_token"]
+    config.cloud_auth_email = body.email
+    save_config(config)
+
+    return {"status": "ok", "email": body.email}
+
+
+@router.post("/cloud/logout")
+async def cloud_logout_endpoint() -> dict:
+    """Clear cloud auth info from config."""
+    config = load_config()
+    config.cloud_auth_token = ""
+    config.cloud_auth_email = ""
+    save_config(config)
+
+    return {"status": "ok"}
 
 
 @router.post("/engine/start", response_model=EngineActionResponse)
