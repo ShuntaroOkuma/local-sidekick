@@ -94,7 +94,7 @@ def classify_unified(
         and pc_not_idle
     ):
         yaw, pitch = _get_head_pose_values(head_pose)
-        if yaw < 25 and pitch < 25:
+        if yaw < 40 and pitch < 30:
             return ClassificationResult(
                 state="focused",
                 confidence=0.9,

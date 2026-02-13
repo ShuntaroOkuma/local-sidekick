@@ -91,7 +91,7 @@ class TestClassifyUnified:
     # -- Rule 3: Camera focused + PC not idle -> focused --
 
     def test_camera_focused_pc_active_returns_focused(self) -> None:
-        """EAR>0.27, yaw<25, pitch<25, no drowsy, PC not idle -> focused (0.9)."""
+        """EAR>0.27, yaw<40, pitch<30, no drowsy, PC not idle -> focused (0.9)."""
         camera = make_camera_snapshot(
             ear_average=0.30,
             head_pose={"yaw": 5, "pitch": -3},
@@ -123,8 +123,8 @@ class TestClassifyUnified:
 
         assert result is None
 
-    def test_head_turned_35_returns_none(self) -> None:
-        """yaw=35 deg -> None (not distracted, could be talking to colleague)."""
+    def test_head_turned_35_returns_focused(self) -> None:
+        """yaw=35 deg with clear signals -> focused (within 40° threshold)."""
         camera = make_camera_snapshot(
             ear_average=0.29,
             head_pose={"yaw": 35, "pitch": -2},
@@ -135,8 +135,24 @@ class TestClassifyUnified:
 
         result = classify_unified(camera, pc)
 
-        # 35 degrees exceeds the 25-degree threshold for the focused rule,
-        # but is not enough for auto-distracted. Should go to LLM.
+        # 35 degrees is within the 40-degree threshold for focused rule
+        assert result is not None
+        assert result.state == "focused"
+        assert result.confidence == 0.9
+
+    def test_head_turned_42_returns_none(self) -> None:
+        """yaw=42 deg -> None (exceeds 40° threshold, LLM needed)."""
+        camera = make_camera_snapshot(
+            ear_average=0.29,
+            head_pose={"yaw": 42, "pitch": -2},
+            perclos_drowsy=False,
+            yawning=False,
+        )
+        pc = make_pc_snapshot()
+
+        result = classify_unified(camera, pc)
+
+        # 42 degrees exceeds the 40-degree threshold for the focused rule
         assert result is None
 
     def test_drowsy_signals_returns_none(self) -> None:
@@ -208,7 +224,7 @@ class TestClassifyUnified:
     def test_safari_passive_browsing_with_clear_focus_signals(self) -> None:
         """Safari browsing with clear camera focused signals -> focused.
 
-        When camera shows EAR>0.27, yaw<25, pitch<25, no drowsy and PC is
+        When camera shows EAR>0.27, yaw<40, pitch<30, no drowsy and PC is
         not idle, the focused rule fires even for Safari browsing. The
         browsing pattern (low keyboard + high mouse) is for LLM to evaluate
         only when camera signals are ambiguous.
@@ -283,11 +299,11 @@ class TestClassifyUnified:
         # EAR 0.27 is not > 0.27, so focused rule should not fire
         assert result is None
 
-    def test_focused_requires_yaw_below_25(self) -> None:
-        """yaw >= 25 prevents focused rule from firing."""
+    def test_focused_requires_yaw_below_40(self) -> None:
+        """yaw >= 40 prevents focused rule from firing."""
         camera = make_camera_snapshot(
             ear_average=0.30,
-            head_pose={"yaw": 25, "pitch": 0},
+            head_pose={"yaw": 40, "pitch": 0},
             perclos_drowsy=False,
             yawning=False,
         )
@@ -295,14 +311,14 @@ class TestClassifyUnified:
 
         result = classify_unified(camera, pc)
 
-        # yaw 25 is not < 25, so focused rule should not fire
+        # yaw 40 is not < 40, so focused rule should not fire
         assert result is None
 
-    def test_focused_requires_pitch_below_25(self) -> None:
-        """pitch >= 25 prevents focused rule from firing."""
+    def test_focused_requires_pitch_below_30(self) -> None:
+        """pitch >= 30 prevents focused rule from firing."""
         camera = make_camera_snapshot(
             ear_average=0.30,
-            head_pose={"yaw": 5, "pitch": 25},
+            head_pose={"yaw": 5, "pitch": 30},
             perclos_drowsy=False,
             yawning=False,
         )
@@ -310,7 +326,7 @@ class TestClassifyUnified:
 
         result = classify_unified(camera, pc)
 
-        # pitch 25 is not < 25, so focused rule should not fire
+        # pitch 30 is not < 30, so focused rule should not fire
         assert result is None
 
     def test_pc_idle_60s_boundary(self) -> None:
