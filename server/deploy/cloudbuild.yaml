@@ -1,14 +1,16 @@
 steps:
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['build', '-t', 'gcr.io/$PROJECT_ID/local-sidekick-api', './server']
+    args: ['build', '-t', '${_REGION}-docker.pkg.dev/$PROJECT_ID/local-sidekick/api', './server']
   - name: 'gcr.io/cloud-builders/docker'
-    args: ['push', 'gcr.io/$PROJECT_ID/local-sidekick-api']
+    args: ['push', '${_REGION}-docker.pkg.dev/$PROJECT_ID/local-sidekick/api']
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     args:
       - 'gcloud'
       - 'run'
       - 'deploy'
       - 'local-sidekick-api'
-      - '--image=gcr.io/$PROJECT_ID/local-sidekick-api'
-      - '--region=asia-northeast1'
+      - '--image=${_REGION}-docker.pkg.dev/$PROJECT_ID/local-sidekick/api'
+      - '--region=${_REGION}'
       - '--allow-unauthenticated'
+substitutions:
+  _REGION: asia-northeast1

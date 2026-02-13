@@ -136,7 +136,7 @@ Electronウィンドウが自動で開きます。
 | 1 | 稼働時間 | 開始/終了時刻を変更して保存 | 次回 Timeline に反映される |
 | 2 | アバター | トグルをON/OFF | 即座にアバターウィンドウが表示/非表示される（保存不要） |
 | 3 | カメラ | ON/OFFトグル | 保存後にカメラ監視が開始/停止される |
-| 4 | サーバ同期 | ON/OFFトグル | Cloud Runとの同期設定（将来機能） |
+| 4 | サーバ同期 | ON/OFFトグル | ONにするとCloud Run接続セクションが展開される（詳細はセクション12参照） |
 | 5 | AIモデル | ティア選択（無効/軽量/推奨） | 選択したモデルティアが保存される |
 | 6 | 保存 | 「保存」ボタンをクリック | 「保存しました」メッセージが3秒間表示される |
 
@@ -332,19 +332,46 @@ LLMが動作するためにはモデルが必要です。
 
 ---
 
-## 11. Server（Cloud Run API）テスト
+## 11. Server / Cloud Run 連携テスト
 
 > サーバーはオプショナル（ローカルのみでも動作する）。
-> テストする場合は以下のCLI手順で確認。
+> Engine → Cloud Run へのプロキシ機能、クラウド認証、フォールバック動作を含めて確認します。
 
-### 起動
+### 11.1 セットアップ
+
+**Server（Cloud Run 相当）をローカルで起動:**
 
 ```bash
-cd server && source .venv/bin/activate
+cd server
+python3 -m venv .venv && source .venv/bin/activate
+pip install -e .
+
+# メモリストア + テスト用JWTシークレットで起動
 USE_MEMORY_STORE=true JWT_SECRET=test-secret uvicorn server.main:app --port 8081
 ```
 
-### API確認
+**Engine に httpx を含む依存をインストール:**
+
+```bash
+cd engine && source .venv/bin/activate
+pip install -e ".[llama,download]"
+```
+
+**Engine / Client を通常通り起動:**
+
+```bash
+# ターミナル1
+cd engine && source .venv/bin/activate && python -m engine.main
+
+# ターミナル2
+cd client && npm run dev
+```
+
+---
+
+### 11.2 Server API 単体確認（CLI）
+
+Server が正しく動作しているかを直接確認します。
 
 ```bash
 BASE=http://localhost:8081
@@ -369,7 +396,7 @@ TOKEN=$(curl -s -X POST $BASE/api/auth/login \
 curl -s $BASE/api/settings/ -H "Authorization: Bearer $TOKEN" | python3 -m json.tool
 # 期待: working_hours_start, camera_enabled 等
 
-# レポート生成
+# レポート生成（Vertex AI が有効な場合のみ成功）
 curl -s -X POST $BASE/api/reports/generate \
   -H "Authorization: Bearer $TOKEN" \
   -H "Content-Type: application/json" \
@@ -377,6 +404,153 @@ curl -s -X POST $BASE/api/reports/generate \
   | python3 -m json.tool
 # 期待: summary, highlights, concerns, tomorrow_tip を含むJSON
 ```
+
+---
+
+### 11.3 Settings UI - Cloud Run 接続設定
+
+| # | 操作 | 期待動作 |
+|---|------|---------|
+| 1 | Settings → サーバ同期を **ON** にする | 「Cloud Run 接続」セクションが展開表示される |
+| 2 | Cloud Run URL に `http://localhost:8081` を入力 | URL入力欄に値が表示される |
+| 3 | 「保存」をクリック | 「保存しました」メッセージ。cloud_run_url が Engine config に保存される |
+
+**CLI で設定確認:**
+
+```bash
+curl -s http://localhost:18080/api/settings | python3 -m json.tool
+# 期待: "sync_enabled": true, "cloud_run_url": "http://localhost:8081", "cloud_auth_email": ""
+```
+
+---
+
+### 11.4 クラウド認証（新規登録 → ログイン → ログアウト）
+
+#### 新規登録
+
+| # | 操作 | 期待動作 |
+|---|------|---------|
+| 1 | メールアドレスに `test@example.com` を入力 | - |
+| 2 | パスワードに `testpass123` を入力 | - |
+| 3 | 「新規登録」ボタンをクリック | ボタンが「処理中...」→ 登録成功後に「test@example.com としてログイン中」表示に切り替わる |
+
+**CLI で確認:**
+
+```bash
+curl -s http://localhost:18080/api/settings | python3 -m json.tool
+# 期待: "cloud_auth_email": "test@example.com"
+```
+
+```bash
+# config.json にトークンが保存されていることを確認
+cat ~/.local-sidekick/config.json | python3 -m json.tool
+# 期待: "cloud_auth_token": "eyJ..." (JWT), "cloud_auth_email": "test@example.com"
+```
+
+#### ログアウト
+
+| # | 操作 | 期待動作 |
+|---|------|---------|
+| 1 | 「ログアウト」ボタンをクリック | 「処理中...」→ メール/パスワード入力欄+ログイン/新規登録ボタンに戻る |
+
+**CLI で確認:**
+
+```bash
+curl -s http://localhost:18080/api/settings | python3 -m json.tool
+# 期待: "cloud_auth_email": ""
+```
+
+#### ログイン（登録済みアカウント）
+
+| # | 操作 | 期待動作 |
+|---|------|---------|
+| 1 | メール `test@example.com`、パスワード `testpass123` を入力 | - |
+| 2 | 「ログイン」ボタンをクリック | 「test@example.com としてログイン中」表示に切り替わる |
+
+#### エラーケース
+
+| # | 操作 | 期待動作 |
+|---|------|---------|
+| 1 | 間違ったパスワードでログイン | 「ログインに失敗しました」エラー表示 |
+| 2 | Server を停止した状態でログイン | 「ログインに失敗しました」エラー表示 |
+| 3 | Cloud Run URL を空のままログイン試行（CLI） | 400エラー（`cloud_run_url not configured`） |
+
+**CLI でエラーケース確認:**
+
+```bash
+curl -s -X POST http://localhost:18080/api/cloud/login \
+  -H "Content-Type: application/json" \
+  -d '{"email":"test@example.com","password":"wrong"}' | python3 -m json.tool
+# 期待: {"detail": "Cloud login failed"} (401)
+```
+
+---
+
+### 11.5 レポート生成 - Cloud Run プロキシ
+
+**前提:** sync_enabled=ON、Cloud Run URL設定済み、ログイン済みの状態で実施。
+
+#### Cloud レポート（正常系）
+
+| # | 操作 | 期待動作 |
+|---|------|---------|
+| 1 | Report タブを開く | 「レポートを生成」ボタンが表示される |
+| 2 | 「レポートを生成」ボタンをクリック | 「生成中...」→ AI生成レポートが表示される（サマリー、ハイライト、気になるポイント、明日の一手） |
+| 3 | フォールバック警告バナー | 表示されない（Cloud Run成功時） |
+
+**CLI で確認:**
+
+```bash
+curl -s -X POST "http://localhost:18080/api/reports/generate" | python3 -m json.tool
+# 期待: "report_source": "cloud", "report": {"summary": "...", "highlights": [...], ...}
+```
+
+> **注意:** Server をローカル起動（`USE_MEMORY_STORE=true`）の場合、Vertex AI が未設定だとレポート生成が500エラーになる可能性があります。
+> Vertex AI を使う場合は以下で起動:
+> ```bash
+> cd server
+> GCP_PROJECT_ID=your-project JWT_SECRET=test-secret uvicorn server.main:app --port 8081
+> ```
+
+#### フォールバック（Cloud Run 到達不能時）
+
+| # | 操作 | 期待動作 |
+|---|------|---------|
+| 1 | Server（ポート8081）を **Ctrl+C で停止** する | - |
+| 2 | Report タブで「レポートを生成」ボタンをクリック | ローカルダミーレポートが表示される |
+| 3 | フォールバック警告バナー | 黄色背景で「Cloud Run に接続できませんでした。ローカルレポートを表示しています。」が表示される |
+
+**CLI で確認:**
+
+```bash
+# Server停止状態で実行
+curl -s -X POST "http://localhost:18080/api/reports/generate" | python3 -m json.tool
+# 期待: "report_source": "local", "report": {"summary": "本日の作業統計: 集中 0分", ...}
+```
+
+#### sync_enabled OFF の場合
+
+| # | 操作 | 期待動作 |
+|---|------|---------|
+| 1 | Settings → サーバ同期を **OFF** にして保存 | - |
+| 2 | Report タブで「レポートを生成」をクリック | ローカルダミーレポートが表示される |
+| 3 | フォールバック警告バナー | 表示されない（sync_enabled=OFFなのでフォールバックは正常動作） |
+
+---
+
+### 11.6 Cloud 連携チェックリスト
+
+| # | 確認内容 | 期待動作 | 確認方法 |
+|---|---------|---------|---------|
+| 1 | Server ヘルスチェック | `{"status": "ok"}` が返る | CLI: Server直接 |
+| 2 | Cloud Run URL 保存 | config.json に cloud_run_url が保存される | CLI: Engine Settings API |
+| 3 | 新規登録 | Cloud Run にアカウント作成、JWT を config に保存 | Settings UI |
+| 4 | ログイン | JWT を config に保存、UI にメール表示 | Settings UI |
+| 5 | ログアウト | JWT とメールを config からクリア | Settings UI |
+| 6 | Cloud レポート生成 | Vertex AI によるAIレポートが返る | Report UI |
+| 7 | フォールバック | Cloud Run不通時にローカルダミーレポート+警告バナー | Server停止して確認 |
+| 8 | sync OFF | Cloud Run を使わずローカルレポート（警告なし） | Settings でOFF |
+| 9 | JWT 期限切れ | 401 → ログインに失敗（再ログインを促す） | JWT期限後にレポート生成 |
 
 ---
 

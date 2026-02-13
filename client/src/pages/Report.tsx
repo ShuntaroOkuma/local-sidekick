@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
 import { api } from "../lib/api";
+import { useSettings } from "../hooks/useSettings";
 import type { DailyStats, DailyReport } from "../lib/types";
 
 export function Report() {
+  const { settings } = useSettings();
   const [stats, setStats] = useState<DailyStats | null>(null);
   const [report, setReport] = useState<DailyReport | null>(null);
   const [loading, setLoading] = useState(true);
@@ -71,6 +73,14 @@ export function Report() {
       {error && (
         <div className="bg-red-500/10 border border-red-500/20 rounded-lg p-4">
           <p className="text-sm text-red-400">{error}</p>
+        </div>
+      )}
+
+      {report && settings.sync_enabled && stats?.report_source === "local" && (
+        <div className="bg-yellow-500/10 border border-yellow-500/20 rounded-lg p-4">
+          <p className="text-sm text-yellow-400">
+            Cloud Run に接続できませんでした。ローカルレポートを表示しています。
+          </p>
         </div>
       )}
 

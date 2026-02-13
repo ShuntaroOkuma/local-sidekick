@@ -197,6 +197,131 @@ The avatar can be toggled ON/OFF from **Settings > アバター** in the GUI. Wh
 - Camera can be disabled in settings
 - Avatar can be disabled in settings
 
+## セキュリティに関する注意
+
+- Cloud Run認証トークン（JWT）は `~/.local-sidekick/config.json` にプレーンテキストで保存されます
+- 本実装はハッカソンデモ用の暫定実装です。本番運用ではシステムキーチェーン等の安全なストレージに移行が必要です
+- `config.json` をバージョン管理に含めないでください（`.gitignore` で除外済み）
+
+## GCP デプロイ（Cloud Run）
+
+### 前提条件
+
+```bash
+gcloud auth login
+
+# 以降の手順で使用する環境変数を設定
+export PROJECT_ID=your-project-id
+export REGION=asia-northeast1
+
+gcloud config set project $PROJECT_ID
+
+# 必要な API を有効化
+gcloud services enable \
+  run.googleapis.com \
+  cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com \
+  aiplatform.googleapis.com \
+  firestore.googleapis.com
+```
+
+### IAM 権限設定（初回のみ）
+
+```bash
+PROJECT_NUMBER=$(gcloud projects describe $PROJECT_ID --format='value(projectNumber)')
+
+# Cloud Build がソースを GCS にアップロードするための権限
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/storage.admin"
+
+# Cloud Build が Docker イメージを Artifact Registry に push するための権限
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/artifactregistry.writer"
+
+# Cloud Build が Cloud Run にデプロイするための権限
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/run.admin"
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/iam.serviceAccountUser"
+
+# Cloud Run から Vertex AI を呼び出すための権限
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/aiplatform.user"
+
+# Cloud Run から Firestore にアクセスするための権限
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role="roles/datastore.user"
+```
+
+### Artifact Registry リポジトリ作成（初回のみ）
+
+```bash
+gcloud artifacts repositories create local-sidekick \
+  --repository-format=docker \
+  --location=$REGION
+```
+
+### Firestore データベース作成（初回のみ）
+
+```bash
+gcloud firestore databases create --location=$REGION
+```
+
+### デプロイ
+
+```bash
+# リポジトリルートから実行（Dockerfile が server/ を COPY するため）
+gcloud builds submit \
+  --config=server/deploy/cloudbuild.yaml \
+  --project=$PROJECT_ID \
+  .
+```
+
+### 環境変数の設定
+
+```bash
+# JWT_SECRET を生成
+export JWT_SECRET=$(openssl rand -base64 32)
+
+gcloud run services update local-sidekick-api \
+  --region=$REGION \
+  --set-env-vars="GCP_PROJECT_ID=$PROJECT_ID,GCP_LOCATION=$REGION,JWT_SECRET=$JWT_SECRET,ENV=production"
+```
+
+### デプロイ確認
+
+```bash
+# Cloud Run の URL を取得
+SERVICE_URL=$(gcloud run services describe local-sidekick-api \
+  --region=$REGION \
+  --format='value(status.url)')
+
+# ヘルスチェック
+curl -s $SERVICE_URL/api/health
+# → {"status": "ok", "service": "local-sidekick-api"}
+```
+
+### アプリから接続
+
+1. Engine + Client を起動
+2. Settings → サーバ同期 ON
+3. Cloud Run URL に `$SERVICE_URL` を入力して保存
+4. メール/パスワードでログインまたは新規登録
+5. Report タブでレポート生成 → Vertex AI の AI レポートが返る
+
+### 注意事項
+
+- リージョン: デフォルト `asia-northeast1`（東京）。`$REGION` で変更可能
+- `--allow-unauthenticated` で公開設定（アプリレベルで JWT 認証）
+- 初回リクエストはコールドスタートで 10-30 秒かかる（Engine 側タイムアウト 60 秒）
+- Cloud Run / Vertex AI ともに従量課金（リクエストがなければほぼ無料）
+
 ## Documentation
 
 - [Product Requirements](docs/requirements.md)
@@ -206,4 +331,4 @@ The avatar can be toggled ON/OFF from **Settings > アバター** in the GUI. Wh
 
 ## License
 
-Private - Google Cloud Japan AI Hackathon Vol.4
+MIT License. See LICENSE file for details.

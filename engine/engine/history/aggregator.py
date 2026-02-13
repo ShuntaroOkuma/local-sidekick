@@ -139,7 +139,7 @@ def _extract_focus_blocks(
                     blocks.append({
                         "start": datetime.datetime.fromtimestamp(block_start).strftime("%H:%M"),
                         "end": datetime.datetime.fromtimestamp(last_focused_ts).strftime("%H:%M"),
-                        "duration_min": round(duration_min, 1),
+                        "duration_min": round(duration_min),
                     })
                 block_start = None
 
@@ -150,7 +150,7 @@ def _extract_focus_blocks(
             blocks.append({
                 "start": datetime.datetime.fromtimestamp(block_start).strftime("%H:%M"),
                 "end": datetime.datetime.fromtimestamp(last_focused_ts).strftime("%H:%M"),
-                "duration_min": round(duration_min, 1),
+                "duration_min": round(duration_min),
             })
 
     return blocks

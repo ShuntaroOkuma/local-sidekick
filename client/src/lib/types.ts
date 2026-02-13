@@ -33,6 +33,7 @@ export interface DailyStats {
   away_minutes: number;
   notification_count: number;
   report?: DailyReport;
+  report_source?: "local" | "cloud";
 }
 
 export interface DailyReport {
@@ -62,6 +63,18 @@ export interface Settings {
   model_tier: ModelTier;
   sync_enabled: boolean;
   avatar_enabled: boolean;
+  cloud_run_url?: string;
+  cloud_auth_email?: string;
+}
+
+export interface CloudAuthRequest {
+  email: string;
+  password: string;
+}
+
+export interface CloudAuthResponse {
+  status: string;
+  email: string;
 }
 
 export interface ElectronAPI {
