@@ -5,6 +5,7 @@ import type {
   Settings,
   NotificationEntry,
   ModelInfo,
+  CloudAuthResponse,
 } from "./types";
 
 const DEFAULT_BASE_URL = "http://localhost:18080";
@@ -109,4 +110,20 @@ export const api = {
 
   deleteModel: (modelId: string): Promise<{ status: string; message: string }> =>
     request(`/api/models/${modelId}`, { method: "DELETE" }),
+
+  // Cloud authentication
+  cloudLogin: (email: string, password: string): Promise<CloudAuthResponse> =>
+    request("/api/cloud/login", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+
+  cloudRegister: (email: string, password: string): Promise<CloudAuthResponse> =>
+    request("/api/cloud/register", {
+      method: "POST",
+      body: JSON.stringify({ email, password }),
+    }),
+
+  cloudLogout: (): Promise<void> =>
+    request("/api/cloud/logout", { method: "POST" }),
 };
