@@ -20,6 +20,19 @@ class ClassificationResult:
     source: str  # "rule" or "llm"
 
 
+# ---------------------------------------------------------------------------
+# Thresholds (module-level constants for easy tuning)
+# ---------------------------------------------------------------------------
+AWAY_FACE_NOT_DETECTED_RATIO = 0.7
+FOCUSED_MIN_EAR = 0.27
+FOCUSED_MAX_YAW = 40
+FOCUSED_MAX_PITCH = 30
+PC_NOT_IDLE_MAX_SECONDS = 60
+FALLBACK_DISTRACTED_YAW = 45
+FALLBACK_DISTRACTED_APP_SWITCHES = 6
+FALLBACK_DISTRACTED_UNIQUE_APPS = 4
+
+
 def _get_head_pose_values(head_pose: dict) -> tuple[float, float]:
     """Extract absolute yaw and pitch from head_pose dict."""
     yaw = abs(head_pose.get("yaw", 0))
@@ -63,7 +76,7 @@ def classify_unified(
 
     # Rule 2: High face_not_detected_ratio -> away
     fndr = camera.get("face_not_detected_ratio")
-    if fndr is not None and fndr > 0.7:
+    if fndr is not None and fndr > AWAY_FACE_NOT_DETECTED_RATIO:
         return ClassificationResult(
             state="away",
             confidence=0.9,
@@ -83,18 +96,18 @@ def classify_unified(
     idle_seconds = pc.get("idle_seconds", 0.0)
     is_idle = pc.get("is_idle", False)
 
-    pc_not_idle = not is_idle and idle_seconds <= 60
+    pc_not_idle = not is_idle and idle_seconds <= PC_NOT_IDLE_MAX_SECONDS
 
     if (
         ear_avg is not None
-        and ear_avg > 0.27
+        and ear_avg > FOCUSED_MIN_EAR
         and not perclos_drowsy
         and not yawning
         and head_pose is not None
         and pc_not_idle
     ):
         yaw, pitch = _get_head_pose_values(head_pose)
-        if yaw < 40 and pitch < 30:
+        if yaw < FOCUSED_MAX_YAW and pitch < FOCUSED_MAX_PITCH:
             return ClassificationResult(
                 state="focused",
                 confidence=0.9,
@@ -153,7 +166,7 @@ def classify_unified_fallback(
         head_pose = camera.get("head_pose")
         if head_pose is not None:
             yaw, _ = _get_head_pose_values(head_pose)
-            if yaw > 45:
+            if yaw > FALLBACK_DISTRACTED_YAW:
                 return ClassificationResult(
                     state="distracted",
                     confidence=0.6,
@@ -166,7 +179,7 @@ def classify_unified_fallback(
         app_switches = pc.get("app_switches_in_window", 0)
         unique_apps = pc.get("unique_apps_in_window", 0)
 
-        if app_switches > 6 and unique_apps > 4:
+        if app_switches > FALLBACK_DISTRACTED_APP_SWITCHES and unique_apps > FALLBACK_DISTRACTED_UNIQUE_APPS:
             return ClassificationResult(
                 state="distracted",
                 confidence=0.6,

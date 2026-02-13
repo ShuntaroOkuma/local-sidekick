@@ -286,8 +286,8 @@ async def _get_final_classification(
     if llm is None:
         return classify_unified_fallback(camera_snap, pc_snap)
 
-    camera_json = json.dumps(camera_snap, indent=2) if camera_snap else "(unavailable)"
-    pc_json = json.dumps(pc_snap, indent=2) if pc_snap else "(unavailable)"
+    camera_json = json.dumps(camera_snap) if camera_snap else "(unavailable)"
+    pc_json = json.dumps(pc_snap) if pc_snap else "(unavailable)"
     user_prompt = format_unified_prompt(camera_json, pc_json)
 
     try:

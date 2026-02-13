@@ -50,12 +50,12 @@
 |---|---|---|---|
 | 1 | camera: face_detected=False | away | 1.0 |
 | 2 | camera: face_not_detected_ratio > 0.7 | away | 0.9 |
-| 3 | camera: EAR>0.27 + yaw<25° + pitch<25° + perclos_drowsy=False + yawning=False **AND** pc: not idle | focused | 0.9 |
+| 3 | camera: EAR>0.27 + yaw<40° + pitch<30° + perclos_drowsy=False + yawning=False **AND** pc: not idle | focused | 0.9 |
 | — | 上記に該当しない | None (LLM) | — |
 
-**PC idle単体ではidle判定しない**: MTGやオンラインコース受講中はPC操作なしで60秒以上
+**PC idle単体では離席判定しない**: MTGやオンラインコース受講中はPC操作なしで60秒以上
 経つが、カメラでは画面を見ている。PC idle + カメラの状態を総合してLLMが判断する
-（idle/focused/drowsy等を文脈で決定）。
+（focused/drowsy等を文脈で決定）。
 
 **Rule 3が統合ルール**: カメラの明白なfocused信号 + PCがアイドルでない → focused。
 カメラだけでは「画面を見ているが操作していない（寝落ち手前）」が区別できないため、
@@ -89,48 +89,20 @@ TEXT_SYSTEM_PROMPT / PC_USAGE_SYSTEM_PROMPT を削除し、UNIFIED_SYSTEM_PROMPT
 You are a focus/attention state classifier. Given BOTH facial feature data
 AND PC usage data, determine the person's current state.
 
-STATES:
-- "focused": Engaged in work. Includes: looking at screen, talking to a
-  colleague (head turned ~30-40° is normal), attending video meeting,
-  reading, thinking with low input.
-- "drowsy": Physical sleepiness. Requires MULTIPLE indicators together:
-  very low eye openness (EAR < 0.22), high PERCLOS, yawning, drooping head.
-  A single indicator alone is NOT enough.
-- "distracted": Attention has genuinely drifted. Sustained purposeless
-  gaze away, passive content scrolling, rapid unfocused app switching.
-- "away": Person not present (no face detected).
-- "idle": Stepped away from active work. Requires BOTH low/no PC input AND
-  no sign of intentional engagement (not watching screen attentively, not
-  in a meeting). PC idle alone does NOT mean idle — the person may be
-  watching a video, in a meeting, or reading.
+STATES: focused, drowsy, distracted, away
+DEFAULT: If unsure, choose "focused". Focused is the normal working state.
 
-CROSS-SIGNAL REASONING (critical):
-- Meeting app (Zoom/Teams/Meet/Slack huddle) active + head turned +
-  low keyboard = attending a meeting → FOCUSED
-- Head turned 30-40° + stable gaze + normal EAR = talking to colleague → FOCUSED
-- Browser + high mouse + very low keyboard + long since last keystroke
-  = passive scrolling → DISTRACTED
-- Low EAR + PERCLOS + yawning + low input together = DROWSY
-- Code editor + active keyboard + brief head turns = normal coding → FOCUSED
+RULES:
+- "focused": DEFAULT. Working, reading, meeting, conversation, multi-monitor use.
+  Head turned up to 40° is normal (multi-monitor, talking to someone).
+  No PC input can still be focused (watching video, in a meeting, reading).
+- "drowsy": Multiple physical sleepiness signals together: low EAR (<0.22),
+  perclos_drowsy=true, yawning, head drooping. A single weak signal alone is NOT enough.
+- "distracted": Rapid app switching (>6 switches, >4 apps) or sustained purposeless
+  movement. Head turning alone is NOT distracted.
+- "away": No face detected.
 
-FACIAL DATA FIELDS:
-- ear_average: Eye Aspect Ratio (0.25-0.35 normal; lower = more closed)
-- perclos / perclos_drowsy: Eye closure ratio (True = potentially drowsy)
-- yawning: Mouth indicates yawning
-- head_pose.yaw: Left/right turn degrees (0 = facing screen)
-- head_pose.pitch: Up/down tilt degrees
-- gaze_off_screen_ratio: Fraction looking away
-- blinks_per_minute: Normal 15-20/min
-- head_movement_count: Significant position changes
-
-PC DATA FIELDS:
-- active_app: Currently focused application
-- idle_seconds: Seconds since last input
-- keyboard_rate_window / mouse_rate_window: Input rates (60s window)
-- app_switches_in_window / unique_apps_in_window: App switching frequency
-- seconds_since_last_keyboard: Recency of typing
-
-Output ONLY JSON: {"state":"...","confidence":0.0-1.0,"reasoning":"brief"}
+Output ONLY: {"state":"...","confidence":0.0-1.0,"reasoning":"brief"}
 ```
 
 ### Few-shot例（3つ）
@@ -376,10 +348,9 @@ python -m engine.main  # 起動して手動テスト
 - 離席 → away（ルール即判定）
 - 頭を横に向けて会話 → focused（統合LLM: 横向き+操作あり→会話）
 - Zoom起動中に横向き → focused（統合LLM: Zoom+横向き→MTG）
-- Zoom起動中に操作なしで画面注視 → focused（統合LLM: Zoom+正面+idle→MTG視聴中）
-- Safariでマウススクロール → distracted（統合LLM: mouse高+keyboard低→閲覧）
+- Zoom起動中に操作なしで画面注視 → focused（統合LLM: Zoom+正面→MTG視聴中）
 - 目閉じ+あくび → drowsy（統合LLM: 複合信号→眠気）
-- 長時間操作なし+画面見ていない → idle（統合LLM: idle+カメラ曖昧→idle判定）
+- 長時間操作なし+画面見ていない → away（統合LLM: 不在判定）
 - model_tier=none → fallback関数が動作
 
 ## 注意事項
