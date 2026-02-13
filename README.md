@@ -197,6 +197,12 @@ The avatar can be toggled ON/OFF from **Settings > アバター** in the GUI. Wh
 - Camera can be disabled in settings
 - Avatar can be disabled in settings
 
+## セキュリティに関する注意
+
+- Cloud Run認証トークン（JWT）は `~/.local-sidekick/config.json` にプレーンテキストで保存されます
+- 本実装はハッカソンデモ用の暫定実装です。本番運用ではシステムキーチェーン等の安全なストレージに移行が必要です
+- `config.json` をバージョン管理に含めないでください（`.gitignore` で除外済み）
+
 ## Documentation
 
 - [Product Requirements](docs/requirements.md)
