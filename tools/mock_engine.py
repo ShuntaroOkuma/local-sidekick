@@ -11,7 +11,10 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 # Store for connected WebSocket clients
 clients: list[WebSocket] = []
-current_state = {"state": "idle", "confidence": 0.5, "timestamp": time.time()}
+current_state = {"state": "focused", "confidence": 0.5, "timestamp": time.time()}
+
+# Pending notifications queue (consumed by Electron polling)
+pending_notifications_queue: list[dict] = []
 
 @app.get("/api/health")
 async def health():
@@ -23,7 +26,10 @@ async def get_state():
 
 @app.get("/api/notifications/pending")
 async def pending_notifications():
-    return []
+    """Return and drain pending notifications (consumed by Electron polling)."""
+    notifications = list(pending_notifications_queue)
+    pending_notifications_queue.clear()
+    return notifications
 
 @app.websocket("/ws/state")
 async def ws_state(websocket: WebSocket):
@@ -49,7 +55,7 @@ async def broadcast(data: dict):
 
 @app.post("/test/state/{state_name}")
 async def set_state(state_name: str):
-    """Set state: focused, drowsy, distracted, away, idle"""
+    """Set state: focused, drowsy, distracted, away"""
     current_state.update({"state": state_name, "confidence": 0.9, "timestamp": time.time()})
     await broadcast(current_state)
     return {"set": state_name}
@@ -69,6 +75,12 @@ async def send_notification(notif_type: str):
         "timestamp": time.time(),
     }
     await broadcast(data)
+    # Also enqueue for Electron HTTP polling (/api/notifications/pending)
+    pending_notifications_queue.append({
+        "type": notif_type,
+        "message": data["message"],
+        "timestamp": data["timestamp"],
+    })
     return {"sent": notif_type}
 
 if __name__ == "__main__":

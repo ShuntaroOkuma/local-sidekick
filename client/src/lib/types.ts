@@ -1,4 +1,4 @@
-export type UserState = "focused" | "drowsy" | "distracted" | "away" | "idle";
+export type UserState = "focused" | "drowsy" | "distracted" | "away";
 export type NotificationType = "drowsy" | "distracted" | "over_focus";
 export type NotificationAction = "accepted" | "snoozed" | "dismissed";
 
@@ -31,7 +31,6 @@ export interface DailyStats {
   drowsy_minutes: number;
   distracted_minutes: number;
   away_minutes: number;
-  idle_minutes: number;
   notification_count: number;
   report?: DailyReport;
 }

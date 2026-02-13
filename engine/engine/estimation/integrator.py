@@ -1,7 +1,8 @@
-"""State integrator: combines camera and PC usage states.
+"""State integrator: builds IntegratedState from ClassificationResult.
 
-Implements the 12-pattern integration table from the architecture design.
-Camera (4 states) x PC (3 states) = 12 combinations.
+Simplified from the previous 12-pattern integration table.
+The unified classifier now handles cross-signal reasoning directly,
+so this module just wraps the result in an API-compatible dataclass.
 """
 
 from __future__ import annotations
@@ -10,15 +11,17 @@ import time
 from dataclasses import dataclass
 from typing import Optional
 
+from engine.estimation.rule_classifier import ClassificationResult
+
 
 @dataclass(frozen=True)
 class IntegratedState:
     """Result of integrating camera and PC usage states."""
 
-    state: str  # focused, drowsy, distracted, away, idle
+    state: str  # focused, drowsy, distracted, away
     confidence: float
-    camera_state: Optional[str]  # focused, drowsy, distracted, away
-    pc_state: Optional[str]  # focused, distracted, idle
+    camera_state: Optional[str]
+    pc_state: Optional[str]
     reasoning: str
     timestamp: float
 
@@ -34,136 +37,27 @@ class IntegratedState:
         }
 
 
-# Integration lookup table:
-# (camera_state, pc_state) -> (final_state, confidence_factor, reasoning)
-_INTEGRATION_TABLE: dict[tuple[str, str], tuple[str, float, str]] = {
-    # Camera: focused
-    ("focused", "focused"): (
-        "focused", 1.0,
-        "Both camera and PC indicate focus",
-    ),
-    ("focused", "distracted"): (
-        "focused", 0.85,
-        "Camera shows focus, app switching is part of work",
-    ),
-    ("focused", "idle"): (
-        "idle", 0.85,
-        "PC idle is reliable; user is present but not active",
-    ),
-    # Camera: drowsy
-    ("drowsy", "focused"): (
-        "drowsy", 0.9,
-        "Physical drowsiness detected despite PC activity",
-    ),
-    ("drowsy", "distracted"): (
-        "drowsy", 0.9,
-        "Physical drowsiness takes priority",
-    ),
-    ("drowsy", "idle"): (
-        "drowsy", 0.95,
-        "Physical drowsiness with no PC activity",
-    ),
-    # Camera: distracted
-    ("distracted", "focused"): (
-        "focused", 0.8,
-        "Active typing; momentary glance away",
-    ),
-    ("distracted", "distracted"): (
-        "distracted", 1.0,
-        "Both camera and PC indicate distraction",
-    ),
-    ("distracted", "idle"): (
-        "distracted", 0.85,
-        "Looking away with no PC activity",
-    ),
-    # Camera: away
-    ("away", "focused"): (
-        "away", 0.9,
-        "No face detected despite PC activity",
-    ),
-    ("away", "distracted"): (
-        "away", 0.95,
-        "No face detected, scattered PC use",
-    ),
-    ("away", "idle"): (
-        "away", 1.0,
-        "No face detected and no PC activity",
-    ),
-}
+def build_integrated_state(
+    result: ClassificationResult,
+    camera_snapshot: Optional[dict],
+    pc_snapshot: Optional[dict],
+) -> IntegratedState:
+    """Build an IntegratedState from a unified ClassificationResult.
 
+    Args:
+        result: The classification result from unified rules or LLM.
+        camera_snapshot: Raw camera snapshot dict (kept for future use).
+        pc_snapshot: Raw PC snapshot dict (kept for future use).
 
-class StateIntegrator:
-    """Integrates camera and PC usage states into a final determination.
-
-    Handles cases where one or both inputs are unavailable.
+    Returns:
+        IntegratedState with camera_state and pc_state set to None
+        (unified classification does not produce individual states).
     """
-
-    def __init__(self) -> None:
-        self._last_state: Optional[IntegratedState] = None
-
-    @property
-    def last_state(self) -> Optional[IntegratedState]:
-        """Get the most recent integrated state."""
-        return self._last_state
-
-    def integrate(
-        self,
-        camera_state: Optional[str] = None,
-        camera_confidence: float = 0.0,
-        pc_state: Optional[str] = None,
-        pc_confidence: float = 0.0,
-    ) -> IntegratedState:
-        """Combine camera and PC states into a final determination.
-
-        Args:
-            camera_state: Camera-based state (focused/drowsy/distracted/away) or None.
-            camera_confidence: Confidence of camera classification.
-            pc_state: PC usage state (focused/distracted/idle) or None.
-            pc_confidence: Confidence of PC classification.
-
-        Returns:
-            IntegratedState with the final determination.
-        """
-        now = time.time()
-
-        # Both sources available: use lookup table
-        if camera_state is not None and pc_state is not None:
-            key = (camera_state, pc_state)
-            if key in _INTEGRATION_TABLE:
-                final_state, conf_factor, reasoning = _INTEGRATION_TABLE[key]
-                avg_conf = (camera_confidence + pc_confidence) / 2.0
-                confidence = round(avg_conf * conf_factor, 3)
-            else:
-                # Unknown combination: fall back to camera state
-                final_state = camera_state
-                confidence = camera_confidence * 0.8
-                reasoning = f"Unknown combination ({camera_state}, {pc_state}); using camera"
-
-        # Only camera available
-        elif camera_state is not None:
-            final_state = camera_state
-            confidence = camera_confidence * 0.9
-            reasoning = "Camera only (PC monitoring unavailable)"
-
-        # Only PC available
-        elif pc_state is not None:
-            final_state = pc_state
-            confidence = pc_confidence * 0.8
-            reasoning = "PC only (camera unavailable)"
-
-        # Neither available
-        else:
-            final_state = "unknown"
-            confidence = 0.0
-            reasoning = "No data from camera or PC monitor"
-
-        result = IntegratedState(
-            state=final_state,
-            confidence=confidence,
-            camera_state=camera_state,
-            pc_state=pc_state,
-            reasoning=reasoning,
-            timestamp=now,
-        )
-        self._last_state = result
-        return result
+    return IntegratedState(
+        state=result.state,
+        confidence=result.confidence,
+        camera_state=None,
+        pc_state=None,
+        reasoning=result.reasoning,
+        timestamp=time.time(),
+    )
