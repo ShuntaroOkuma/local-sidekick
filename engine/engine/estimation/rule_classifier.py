@@ -117,6 +117,15 @@ def classify_unified_fallback(
         camera: Dict from TrackerSnapshot.to_dict(), or None if unavailable.
         pc: Dict from UsageSnapshot.to_dict(), or None if unavailable.
     """
+    # Both None: no data at all
+    if camera is None and pc is None:
+        return ClassificationResult(
+            state="unknown",
+            confidence=0.0,
+            reasoning="No data from camera or PC monitor",
+            source="rule",
+        )
+
     # Camera-based fallback rules
     if camera is not None:
         perclos_drowsy = camera.get("perclos_drowsy", False)

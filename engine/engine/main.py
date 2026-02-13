@@ -266,6 +266,43 @@ async def _pc_monitor_loop() -> None:
 # --- Integration + notification + history loop ---
 
 
+async def _get_final_classification(
+    camera_snap: Optional[dict], pc_snap: Optional[dict],
+) -> ClassificationResult:
+    """Run unified classification: rule -> LLM -> fallback.
+
+    Returns a ClassificationResult (never None).
+    """
+    # 1. Unified rule-based classification (clear cases)
+    rule_result = classify_unified(camera_snap, pc_snap)
+    if rule_result is not None:
+        return rule_result
+
+    # 2. Unified LLM classification (ambiguous cases)
+    llm = await _get_shared_llm(_config)
+    if llm is None:
+        return classify_unified_fallback(camera_snap, pc_snap)
+
+    camera_json = json.dumps(camera_snap, indent=2) if camera_snap else "(unavailable)"
+    pc_json = json.dumps(pc_snap, indent=2) if pc_snap else "(unavailable)"
+    user_prompt = format_unified_prompt(camera_json, pc_json)
+
+    try:
+        async with _llm_lock:
+            result = await asyncio.to_thread(
+                llm.classify, UNIFIED_SYSTEM_PROMPT, user_prompt,
+            )
+        return ClassificationResult(
+            state=result.get("state", "unknown"),
+            confidence=result.get("confidence", 0.5),
+            reasoning=result.get("reasoning", ""),
+            source="llm",
+        )
+    except Exception as e:
+        logger.error("Unified LLM inference failed: %s", e)
+        return classify_unified_fallback(camera_snap, pc_snap)
+
+
 async def _integration_loop() -> None:
     """Background task: unified classification, notifications, history.
 
@@ -286,39 +323,13 @@ async def _integration_loop() -> None:
         camera_snap = _latest_camera_snapshot
         pc_snap = _latest_pc_snapshot
 
-        # Skip when no data is available yet (e.g. right after resume)
+        # Early exit: avoid unnecessary LLM/rule calls when no data exists.
+        # classify_unified also handles this, but skipping here saves a sleep cycle.
         if camera_snap is None and pc_snap is None:
             await asyncio.sleep(_config.integration_interval)
             continue
 
-        # 1. Unified rule-based classification (clear cases)
-        rule_result = classify_unified(camera_snap, pc_snap)
-        if rule_result is not None:
-            final = rule_result
-        else:
-            # 2. Unified LLM classification (ambiguous cases)
-            llm = await _get_shared_llm(_config)
-            if llm is None:
-                final = classify_unified_fallback(camera_snap, pc_snap)
-            else:
-                camera_json = json.dumps(camera_snap, indent=2) if camera_snap else "(unavailable)"
-                pc_json = json.dumps(pc_snap, indent=2) if pc_snap else "(unavailable)"
-                user_prompt = format_unified_prompt(camera_json, pc_json)
-
-                try:
-                    async with _llm_lock:
-                        result = await asyncio.to_thread(
-                            llm.classify, UNIFIED_SYSTEM_PROMPT, user_prompt,
-                        )
-                    final = ClassificationResult(
-                        state=result.get("state", "unknown"),
-                        confidence=result.get("confidence", 0.5),
-                        reasoning=result.get("reasoning", ""),
-                        source="llm",
-                    )
-                except Exception as e:
-                    logger.error("Unified LLM inference failed: %s", e)
-                    final = classify_unified_fallback(camera_snap, pc_snap)
+        final = await _get_final_classification(camera_snap, pc_snap)
 
         # Build IntegratedState (API-compatible wrapper)
         integrated = build_integrated_state(final, camera_snap, pc_snap)

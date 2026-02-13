@@ -433,13 +433,13 @@ class TestClassifyUnifiedFallback:
         assert result.state == "focused"
         assert result.confidence == 0.5
 
-    def test_both_none_returns_focused(self) -> None:
-        """Both None -> focused (0.5) as default fallback."""
+    def test_both_none_returns_unknown(self) -> None:
+        """Both None -> unknown (0.0) since no data is available."""
         result = classify_unified_fallback(None, None)
 
         assert result is not None
-        assert result.state == "focused"
-        assert result.confidence == 0.5
+        assert result.state == "unknown"
+        assert result.confidence == 0.0
 
     def test_camera_none_pc_high_switches_returns_distracted(self) -> None:
         """camera=None, pc with high app switches -> distracted."""
