@@ -27,6 +27,8 @@ from mediapipe.tasks.python.vision import (
     RunningMode,
 )
 
+from engine.config import MODELS_DIR
+
 # FaceLandmarker configuration
 _NUM_FACES = 1
 _MIN_DETECTION_CONFIDENCE = 0.5
@@ -38,8 +40,8 @@ DEFAULT_HEIGHT = 480
 DEFAULT_CAMERA_INDEX = 0
 JPEG_QUALITY = 80
 
-# Default model path (relative to poc/ directory)
-_DEFAULT_MODEL_PATH = Path(__file__).parent.parent.parent / "models" / "face_landmarker.task"
+# Default model path (uses MODELS_DIR from config, respects SIDEKICK_MODELS_DIR env var)
+_DEFAULT_MODEL_PATH = MODELS_DIR / "face_landmarker.task"
 _MODEL_DOWNLOAD_URL = (
     "https://storage.googleapis.com/mediapipe-models/"
     "face_landmarker/face_landmarker/float16/1/face_landmarker.task"

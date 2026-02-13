@@ -17,8 +17,9 @@ APP_DIR = Path.home() / ".local-sidekick"
 CONFIG_PATH = APP_DIR / "config.json"
 DB_PATH = APP_DIR / "history.db"
 
-# Model directory (relative to the engine/ package root)
-MODELS_DIR = Path(__file__).parent.parent / "models"
+# Model directory: use SIDEKICK_MODELS_DIR env var (for packaged app) or default
+_BUNDLED_MODELS_DIR = Path(__file__).parent.parent / "models"
+MODELS_DIR = Path(os.environ.get("SIDEKICK_MODELS_DIR", str(_BUNDLED_MODELS_DIR)))
 
 # --- Model paths ---
 

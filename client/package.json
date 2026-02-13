@@ -9,6 +9,8 @@
     "build": "electron-vite build",
     "preview": "electron-vite preview",
     "package": "electron-builder",
+    "build:engine": "bash ../scripts/build-engine.sh",
+    "build:dmg": "npm run build:engine && electron-vite build && electron-builder",
     "build:package": "electron-vite build && electron-builder"
   },
   "dependencies": {

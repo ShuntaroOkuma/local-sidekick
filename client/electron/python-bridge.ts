@@ -1,4 +1,5 @@
 import { ChildProcess, spawn } from "child_process";
+import { copyFileSync, existsSync, mkdirSync } from "fs";
 import { join } from "path";
 import { app } from "electron";
 
@@ -7,31 +8,77 @@ export class PythonBridge {
   private port: number = 18080;
   private pythonPath: string;
   private enginePath: string;
+  private modelsDir: string;
 
   constructor() {
-    // Default Python venv path relative to app root
-    const appRoot = app.isPackaged
-      ? join(app.getAppPath(), "..")
-      : join(__dirname, "../..");
+    const resourcesPath = join(app.getAppPath(), "..");
 
-    this.pythonPath =
-      process.env.PYTHON_PATH || join(appRoot, "engine/.venv/bin/python");
-    this.enginePath = process.env.ENGINE_PATH || join(appRoot, "engine");
+    if (app.isPackaged) {
+      // Packaged: standalone Python + engine bundled in Resources/
+      this.pythonPath = join(resourcesPath, "python", "bin", "python3");
+      this.enginePath = join(resourcesPath, "engine");
+    } else {
+      // Development: use venv
+      const appRoot = join(__dirname, "../..");
+      this.pythonPath =
+        process.env.PYTHON_PATH || join(appRoot, "engine/.venv/bin/python");
+      this.enginePath = process.env.ENGINE_PATH || join(appRoot, "engine");
+    }
+
+    // Writable models directory for downloads (packaged app Resources/ is read-only)
+    this.modelsDir = join(app.getPath("home"), ".local-sidekick", "models");
+  }
+
+  /**
+   * Copy bundled seed models (e.g. face_landmarker.task) to user's writable models dir.
+   * Only runs in packaged mode; skips files that already exist.
+   */
+  private seedModels(): void {
+    if (!app.isPackaged) return;
+
+    mkdirSync(this.modelsDir, { recursive: true });
+
+    const bundledFaceLandmarker = join(
+      this.enginePath,
+      "models",
+      "face_landmarker.task"
+    );
+    const targetFaceLandmarker = join(this.modelsDir, "face_landmarker.task");
+
+    if (
+      existsSync(bundledFaceLandmarker) &&
+      !existsSync(targetFaceLandmarker)
+    ) {
+      console.log("Seeding face_landmarker.task to user models directory");
+      copyFileSync(bundledFaceLandmarker, targetFaceLandmarker);
+    }
   }
 
   async spawn(): Promise<void> {
     return new Promise((resolve, reject) => {
+      this.seedModels();
+
       console.log(`Starting Python Engine...`);
       console.log(`Python path: ${this.pythonPath}`);
       console.log(`Engine path: ${this.enginePath}`);
 
       try {
+        const env: Record<string, string> = {
+          ...process.env,
+          ENGINE_PORT: String(this.port),
+        } as Record<string, string>;
+
+        if (app.isPackaged) {
+          // Point models to writable user directory
+          env.SIDEKICK_MODELS_DIR = this.modelsDir;
+          // Prevent user's Python env from interfering with standalone Python
+          delete env.PYTHONHOME;
+          delete env.PYTHONPATH;
+        }
+
         this.process = spawn(this.pythonPath, ["-m", "engine.main"], {
           cwd: this.enginePath,
-          env: {
-            ...process.env,
-            ENGINE_PORT: String(this.port),
-          },
+          env,
           stdio: ["pipe", "pipe", "pipe"],
         });
 

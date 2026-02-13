@@ -18,3 +18,8 @@ __pycache__/
 poc/models/
 engine/models/*.gguf
 engine/models/*.task
+
+# Build artifacts
+.cache/
+client/build-engine/
+client/release/

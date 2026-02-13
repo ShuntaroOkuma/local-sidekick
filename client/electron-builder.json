@@ -8,10 +8,28 @@
     "dist/**/*",
     "dist-electron/**/*"
   ],
+  "extraResources": [
+    {
+      "from": "build-engine/python",
+      "to": "python",
+      "filter": ["**/*"]
+    },
+    {
+      "from": "build-engine/engine",
+      "to": "engine",
+      "filter": ["**/*"]
+    }
+  ],
   "mac": {
-    "target": ["dmg"],
+    "target": [
+      {
+        "target": "dmg",
+        "arch": ["arm64"]
+      }
+    ],
     "icon": "public/icon.png",
-    "category": "public.app-category.productivity"
+    "category": "public.app-category.productivity",
+    "identity": null
   },
   "dmg": {
     "contents": [
