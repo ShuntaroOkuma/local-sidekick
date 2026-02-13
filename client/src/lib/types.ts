@@ -63,6 +63,7 @@ export interface Settings {
   camera_enabled: boolean;
   model_tier: ModelTier;
   sync_enabled: boolean;
+  avatar_enabled: boolean;
 }
 
 export interface ElectronAPI {
