@@ -81,13 +81,25 @@ class TestUnifiedSystemPrompt:
         assert isinstance(UNIFIED_SYSTEM_PROMPT, str)
         assert len(UNIFIED_SYSTEM_PROMPT) > 0
 
-    def test_unified_system_prompt_contains_cross_signal(self) -> None:
-        """Prompt contains 'CROSS-SIGNAL REASONING' section."""
-        assert "CROSS-SIGNAL REASONING" in UNIFIED_SYSTEM_PROMPT
+    def test_unified_system_prompt_contains_key_rules(self) -> None:
+        """Prompt contains key classification rules."""
+        assert "multi-monitor" in UNIFIED_SYSTEM_PROMPT
+        assert "yaw" in UNIFIED_SYSTEM_PROMPT.lower()
+        assert "EXAMPLES" in UNIFIED_SYSTEM_PROMPT
 
     def test_unified_system_prompt_contains_states(self) -> None:
-        """Prompt contains all 5 states: focused, drowsy, distracted, away, idle."""
-        for state in ("focused", "drowsy", "distracted", "away", "idle"):
+        """Prompt contains all 4 states: focused, drowsy, distracted, away."""
+        for state in ("focused", "drowsy", "distracted", "away"):
             assert state in UNIFIED_SYSTEM_PROMPT, (
                 f"State '{state}' not found in UNIFIED_SYSTEM_PROMPT"
             )
+
+    def test_unified_system_prompt_no_idle(self) -> None:
+        """Prompt does not contain idle as a state."""
+        # idle was removed from the state model
+        assert "idle" not in UNIFIED_SYSTEM_PROMPT.split("STATES:")[1].split("DEFAULT:")[0]
+
+    def test_unified_system_prompt_has_default_focused(self) -> None:
+        """Prompt contains DEFAULT: focused instruction."""
+        assert "DEFAULT" in UNIFIED_SYSTEM_PROMPT
+        assert "focused" in UNIFIED_SYSTEM_PROMPT

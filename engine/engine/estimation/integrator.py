@@ -18,10 +18,10 @@ from engine.estimation.rule_classifier import ClassificationResult
 class IntegratedState:
     """Result of integrating camera and PC usage states."""
 
-    state: str  # focused, drowsy, distracted, away, idle
+    state: str  # focused, drowsy, distracted, away
     confidence: float
-    camera_state: Optional[str]  # focused, drowsy, distracted, away
-    pc_state: Optional[str]  # focused, distracted, idle
+    camera_state: Optional[str]
+    pc_state: Optional[str]
     reasoning: str
     timestamp: float
 

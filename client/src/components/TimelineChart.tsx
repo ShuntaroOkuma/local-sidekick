@@ -19,7 +19,6 @@ const STATE_COLORS: Record<string, { bg: string; text: string }> = {
   drowsy: { bg: "bg-red-500/20", text: "text-red-400" },
   distracted: { bg: "bg-yellow-500/20", text: "text-yellow-400" },
   away: { bg: "bg-gray-600/20", text: "text-gray-500" },
-  idle: { bg: "bg-gray-500/20", text: "text-gray-500" },
 };
 
 const STATE_DOT_COLORS: Record<string, string> = {
@@ -27,7 +26,6 @@ const STATE_DOT_COLORS: Record<string, string> = {
   drowsy: "bg-red-500",
   distracted: "bg-yellow-500",
   away: "bg-gray-600",
-  idle: "bg-gray-500",
 };
 
 const STATE_LABELS: Record<string, string> = {
@@ -35,7 +33,6 @@ const STATE_LABELS: Record<string, string> = {
   drowsy: "眠気",
   distracted: "散漫",
   away: "離席",
-  idle: "待機",
   unknown: "不明",
 };
 

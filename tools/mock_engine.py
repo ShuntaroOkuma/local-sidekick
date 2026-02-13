@@ -11,7 +11,7 @@ app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], all
 
 # Store for connected WebSocket clients
 clients: list[WebSocket] = []
-current_state = {"state": "idle", "confidence": 0.5, "timestamp": time.time()}
+current_state = {"state": "focused", "confidence": 0.5, "timestamp": time.time()}
 
 # Pending notifications queue (consumed by Electron polling)
 pending_notifications_queue: list[dict] = []
@@ -55,7 +55,7 @@ async def broadcast(data: dict):
 
 @app.post("/test/state/{state_name}")
 async def set_state(state_name: str):
-    """Set state: focused, drowsy, distracted, away, idle"""
+    """Set state: focused, drowsy, distracted, away"""
     current_state.update({"state": state_name, "confidence": 0.9, "timestamp": time.time()})
     await broadcast(current_state)
     return {"set": state_name}

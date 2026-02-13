@@ -54,8 +54,8 @@ export function StatsSummary({ stats }: StatsSummaryProps) {
       bgColor: "bg-red-500/10",
     },
     {
-      label: "離席+待機",
-      value: stats.away_minutes + stats.idle_minutes,
+      label: "離席",
+      value: stats.away_minutes,
       color: "text-gray-400",
       bgColor: "bg-gray-500/10",
     },
@@ -65,8 +65,7 @@ export function StatsSummary({ stats }: StatsSummaryProps) {
     stats.focused_minutes +
     stats.distracted_minutes +
     stats.drowsy_minutes +
-    stats.away_minutes +
-    stats.idle_minutes;
+    stats.away_minutes;
 
   return (
     <div>

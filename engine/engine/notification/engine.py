@@ -155,7 +155,7 @@ class NotificationEngine:
         Should be called at each integration interval with the current state.
 
         Args:
-            state: Current integrated state (focused/drowsy/distracted/away/idle).
+            state: Current integrated state (focused/drowsy/distracted/away).
             timestamp: Current timestamp.
             interval_seconds: Time since last evaluation.
 

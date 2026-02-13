@@ -11,8 +11,7 @@ export type EngineUserState =
   | "drowsy"
   | "distracted"
   | "over_focus"
-  | "away"
-  | "idle";
+  | "away";
 
 /** Map engine states to avatar animation modes */
 export function engineStateToAvatarMode(
@@ -28,7 +27,6 @@ export function engineStateToAvatarMode(
     case "over_focus":
       return "stretch";
     case "away":
-    case "idle":
       return "dozing";
     default:
       return "hidden";
