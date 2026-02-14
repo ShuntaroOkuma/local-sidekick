@@ -4,6 +4,7 @@ import type {
   BucketedSegment,
   TimeRange,
   DailyStats,
+  DailyReport,
   Settings,
   NotificationEntry,
   ModelInfo,
@@ -97,6 +98,15 @@ export const api = {
     return request(`/api/reports/generate${params}`, {
       method: "POST",
     });
+  },
+
+  // Report retrieval (past reports)
+  getReport: (date: string): Promise<DailyReport> =>
+    request(`/api/reports/${date}`),
+
+  listReports: async (): Promise<string[]> => {
+    const res = await request<{ dates: string[] }>("/api/reports");
+    return res.dates ?? [];
   },
 
   // Engine control
