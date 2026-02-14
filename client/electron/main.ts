@@ -307,30 +307,31 @@ app.whenReady().then(async () => {
     if (avatarWin && !avatarWin.isDestroyed()) {
       const primary = screen.getPrimaryDisplay();
       const { width, height } = primary.workAreaSize;
-      avatarWin.setPosition(width - 220, height - 320);
+      const [avatarWidth, avatarHeight] = avatarWin.getSize();
+      const margin = 20;
+      avatarWin.setPosition(
+        width - avatarWidth - margin,
+        height - avatarHeight - margin,
+      );
     }
 
     // 2. Trigger camera re-init via engine pause → resume.
     //    Call the API directly instead of pauseEngine/resumeEngine to avoid
     //    stopping state polling and reloading the main window.
     const port = enginePort();
-    try {
-      await fetch(`http://localhost:${port}/api/engine/pause`, {
-        method: "POST",
-      });
-    } catch {
-      // engine may not be running
-    }
+    const callEngine = async (endpoint: "pause" | "resume") => {
+      try {
+        await fetch(`http://localhost:${port}/api/engine/${endpoint}`, {
+          method: "POST",
+        });
+      } catch {
+        // engine may not be running
+      }
+    };
 
+    await callEngine("pause");
     await new Promise((resolve) => setTimeout(resolve, 500));
-
-    try {
-      await fetch(`http://localhost:${port}/api/engine/resume`, {
-        method: "POST",
-      });
-    } catch {
-      // engine may not be running
-    }
+    await callEngine("resume");
   }
 });
 

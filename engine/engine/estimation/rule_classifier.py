@@ -144,7 +144,6 @@ def classify_unified(
     # Rule 5: Slightly low EAR but no other drowsy signals + PC active
     if (
         no_drowsy_signals
-        and ear_avg is not None
         and ear_avg <= FOCUSED_MIN_EAR  # 0.22 < EAR <= 0.27
         and head_pose is not None
         and pc_not_idle
