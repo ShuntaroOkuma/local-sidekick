@@ -70,14 +70,28 @@ local-sidekick/
 
 ビルド済み macOS DMG は [Releases](https://github.com/ShuntaroOkuma/local-sidekick/releases) からダウンロードできます。
 
-> **注意 (macOS):** アプリはコード署名されていません。ダウンロード後、以下のコマンドで quarantine 属性を除去してから開いてください:
-> ```bash
-> xattr -d com.apple.quarantine ~/Downloads/Local\ Sidekick-*-arm64.dmg
-> ```
-> `/Applications` にインストールした後:
-> ```bash
-> xattr -cr /Applications/Local\ Sidekick.app
-> ```
+### macOS でのインストール手順
+
+本アプリは Apple Developer Program によるコード署名を行っていないため、macOS の Gatekeeper によりブロックされます。以下の現象が発生しますが、アプリ自体に問題はありません。
+
+| 現象 | 原因 |
+|------|------|
+| 「"Local Sidekick" は壊れているため開けません」 | インターネットからダウンロードした未署名アプリに macOS が quarantine 属性を付与するため |
+| 「開発元を検証できないため開けません」 | コード署名がないため Gatekeeper が実行を拒否 |
+
+**対処方法:** ターミナルで quarantine 属性を除去してください。
+
+```bash
+# 1. ダウンロードした DMG の quarantine を除去
+xattr -d com.apple.quarantine ~/Downloads/Local\ Sidekick-*-arm64.dmg
+
+# 2. DMG を開いてアプリを /Applications にドラッグ&ドロップ
+
+# 3. インストールしたアプリの quarantine を除去
+xattr -cr /Applications/Local\ Sidekick.app
+
+# 4. アプリを起動
+```
 
 ## クイックスタート（開発者向け）
 

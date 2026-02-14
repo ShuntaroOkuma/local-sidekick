@@ -70,14 +70,28 @@ local-sidekick/
 
 Pre-built macOS DMG is available from [Releases](https://github.com/ShuntaroOkuma/local-sidekick/releases).
 
-> **Note (macOS):** The app is not code-signed. After downloading, remove the quarantine attribute before opening:
-> ```bash
-> xattr -d com.apple.quarantine ~/Downloads/Local\ Sidekick-*-arm64.dmg
-> ```
-> After installing to `/Applications`:
-> ```bash
-> xattr -cr /Applications/Local\ Sidekick.app
-> ```
+### macOS Installation
+
+This app is not signed with an Apple Developer certificate, so macOS Gatekeeper will block it. You may see the following messages — they do not indicate an actual problem with the app:
+
+| Message | Cause |
+|---------|-------|
+| "Local Sidekick is damaged and can't be opened" | macOS adds a quarantine attribute to unsigned apps downloaded from the internet |
+| "Local Sidekick can't be opened because the developer cannot be verified" | Gatekeeper rejects execution of unsigned apps |
+
+**Workaround:** Remove the quarantine attribute via Terminal.
+
+```bash
+# 1. Remove quarantine from the downloaded DMG
+xattr -d com.apple.quarantine ~/Downloads/Local\ Sidekick-*-arm64.dmg
+
+# 2. Open the DMG and drag the app to /Applications
+
+# 3. Remove quarantine from the installed app
+xattr -cr /Applications/Local\ Sidekick.app
+
+# 4. Launch the app
+```
 
 ## Quick Start (Development)
 
