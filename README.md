@@ -66,7 +66,20 @@ local-sidekick/
 └── README.md
 ```
 
-## Quick Start
+## Download
+
+Pre-built macOS DMG is available from [Releases](https://github.com/ShuntaroOkuma/local-sidekick/releases).
+
+> **Note (macOS):** The app is not code-signed. After downloading, remove the quarantine attribute before opening:
+> ```bash
+> xattr -d com.apple.quarantine ~/Downloads/Local\ Sidekick-*-arm64.dmg
+> ```
+> After installing to `/Applications`:
+> ```bash
+> xattr -cr /Applications/Local\ Sidekick.app
+> ```
+
+## Quick Start (Development)
 
 ### Prerequisites
 

@@ -66,7 +66,20 @@ local-sidekick/
 └── README.md
 ```
 
-## クイックスタート
+## ダウンロード
+
+ビルド済み macOS DMG は [Releases](https://github.com/ShuntaroOkuma/local-sidekick/releases) からダウンロードできます。
+
+> **注意 (macOS):** アプリはコード署名されていません。ダウンロード後、以下のコマンドで quarantine 属性を除去してから開いてください:
+> ```bash
+> xattr -d com.apple.quarantine ~/Downloads/Local\ Sidekick-*-arm64.dmg
+> ```
+> `/Applications` にインストールした後:
+> ```bash
+> xattr -cr /Applications/Local\ Sidekick.app
+> ```
+
+## クイックスタート（開発者向け）
 
 ### 前提条件
 
