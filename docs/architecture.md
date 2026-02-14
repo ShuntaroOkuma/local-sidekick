@@ -136,7 +136,7 @@ local-sidekick/
 │   │   ├── history/
 │   │   │   ├── __init__.py
 │   │   │   ├── store.py           # SQLite 履歴保存
-│   │   │   └── aggregator.py      # 日次集計
+│   │   │   └── aggregator.py      # 5分バケット集計 + 日次統計
 │   │   └── api/
 │   │       ├── __init__.py
 │   │       ├── routes.py          # REST API
@@ -185,7 +185,8 @@ PoCのコードを再構成して常駐サービス化する。
 # FastAPI app with:
 # - /api/health                    GET  → ヘルスチェック
 # - /api/state                     GET  → 現在の状態
-# - /api/history                   GET  → 履歴データ
+# - /api/history                   GET  → 履歴データ（生ログ）
+# - /api/history/bucketed          GET  → 5分バケット集計済みセグメント
 # - /api/settings                  GET/PUT → ローカル設定
 # - /api/daily-stats               GET  → 日次集計
 # - /api/notifications             GET  → 通知一覧
@@ -204,10 +205,9 @@ PoCのコードを再構成して常駐サービス化する。
 2. 推定スレッド: 5秒間隔で状態推定（Rule→LLMフォールバック）
 3. PC監視スレッド: 2秒間隔でアプリポーリング + pynputリスナー
 4. PC推定: 30秒間隔でPC状態分類
-5. 統合判定: 5秒間隔でカメラ+PC結果を統合
-6. 通知チェック: 統合結果をもとに通知条件判定
-7. 履歴保存: 5秒ごとの状態をSQLiteに記録
-8. WebSocket配信: 状態変化時にElectronへプッシュ
+5. 統合判定: 10秒間隔でカメラ+PC結果を統合 → SQLite記録 + WebSocket配信
+6. 通知ループ: 5分間隔で直近履歴を5分バケット集計 → 通知条件判定
+   （_notification_loop が build_bucketed_segments() + check_buckets() を実行）
 ```
 
 #### 統合判定ロジック (integrator.py)
@@ -231,13 +231,15 @@ PoCのコードを再構成して常駐サービス化する。
 
 #### 通知エンジン (notification/engine.py)
 
-要件定義書の3種通知:
+5分バケットベースの3種通知（`check_buckets()` でステートレスに判定）:
 
-| 種別       | トリガー条件                          | クールダウン |
-| ---------- | ------------------------------------- | ------------ |
-| drowsy     | 最終判定drowsy連続120秒               | 15分         |
-| distracted | 最終判定distracted連続120秒           | 20分         |
-| over_focus | 直近90分内で最終判定focusedが80分以上 | 30分         |
+| 種別       | トリガー条件                                        | クールダウン |
+| ---------- | --------------------------------------------------- | ------------ |
+| drowsy     | 直近1バケット（5分）がdrowsy                        | 15分         |
+| distracted | 直近1バケット（5分）がdistracted                    | 20分         |
+| over_focus | 直近18バケット（90分）中18バケットがfocused          | 30分         |
+
+※ トリガーのバケット数は設定で変更可能（`drowsy_trigger_buckets` 等）
 
 #### 履歴ストア (history/store.py)
 

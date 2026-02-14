@@ -1,5 +1,7 @@
 # 5分バケット集計ロジックのバックエンド移行計画
 
+> **Status: 実装完了** — [PR #32](https://github.com/ShuntaroOkuma/local-sidekick/pull/32) にて全Step (1a, 1b, 2, 3) をマージ済み (2026-02-14)
+
 ## Context
 
 Timelineの表示改善で導入した「5分バケット → 多数決 → マージ」ロジック（現在のgit diffにある実装）が、通知やレポートにも有効であることが判明した。現在このロジックはフロントエンド（TypeScript）にのみ存在するため、バックエンド（Python）に移植し、通知・レポート・Timelineの全てで共有する。

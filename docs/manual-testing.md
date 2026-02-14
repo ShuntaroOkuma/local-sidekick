@@ -90,6 +90,8 @@ Electronウィンドウが自動で開きます。
 
 画面下部のナビゲーションで **Timeline** タブをタップします。
 
+タイムラインはバックエンドAPI（`/api/history/bucketed`）から5分バケット集計済みのセグメントデータを取得し、そのまま色分け表示します。
+
 ### 確認項目
 
 | # | 確認内容 | 期待動作 |
@@ -556,10 +558,10 @@ curl -s -X POST "http://localhost:18080/api/reports/generate" | python3 -m json.
 ## 12. 自動テスト
 
 ```bash
-# Engine のユニットテスト（41テスト）
+# Engine のユニットテスト（75テスト）
 cd engine && source .venv/bin/activate
-python -m pytest engine/tests/ -v
-# 期待: 41 passed
+python -m pytest tests/ -v
+# 期待: 75 passed
 
 # Client のビルド確認
 cd client
