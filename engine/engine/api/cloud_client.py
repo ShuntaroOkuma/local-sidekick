@@ -54,6 +54,39 @@ async def cloud_register(base_url: str, email: str, password: str) -> dict | Non
         return None
 
 
+async def cloud_get_report(base_url: str, token: str, date: str) -> dict | None:
+    """Fetch a specific report from Cloud Run, return dict or None on error/404."""
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{base_url}/api/reports/{date}",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            return resp.json()
+    except httpx.HTTPError as exc:
+        logger.warning("cloud_get_report failed: %s", exc)
+        return None
+
+
+async def cloud_list_reports(base_url: str, token: str) -> list[str] | None:
+    """Fetch available report dates from Cloud Run, return list or None on error."""
+    try:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(
+                f"{base_url}/api/reports",
+                headers={"Authorization": f"Bearer {token}"},
+                timeout=10,
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            return data.get("dates", [])
+    except httpx.HTTPError as exc:
+        logger.warning("cloud_list_reports failed: %s", exc)
+        return None
+
+
 async def cloud_generate_report(
     base_url: str, token: str, stats: dict
 ) -> dict | None:
