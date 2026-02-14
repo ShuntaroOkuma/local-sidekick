@@ -78,6 +78,7 @@ async def cloud_generate_report(
                 for n in stats.get("notifications", [])
             ],
             "top_apps": stats.get("top_apps", []),
+            "segments": stats.get("segments", []),
         }
         async with httpx.AsyncClient() as client:
             resp = await client.post(

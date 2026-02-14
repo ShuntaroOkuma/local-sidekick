@@ -33,7 +33,7 @@ from engine.api.cloud_client import (
     cloud_register,
 )
 from engine.config import EngineConfig, load_config, save_config
-from engine.history.aggregator import compute_daily_stats
+from engine.history.aggregator import build_bucketed_segments, compute_daily_stats
 
 logger = logging.getLogger(__name__)
 
@@ -68,10 +68,10 @@ class SettingsResponse(BaseModel):
     drowsy_cooldown_minutes: int
     distracted_cooldown_minutes: int
     over_focus_cooldown_minutes: int
-    drowsy_trigger_seconds: int
-    distracted_trigger_seconds: int
-    over_focus_window_minutes: int
-    over_focus_threshold_minutes: int
+    drowsy_trigger_buckets: int
+    distracted_trigger_buckets: int
+    over_focus_window_buckets: int
+    over_focus_threshold_buckets: int
     cloud_run_url: str = ""
     cloud_auth_email: str = ""
 
@@ -85,10 +85,10 @@ class SettingsUpdate(BaseModel):
     drowsy_cooldown_minutes: Optional[int] = None
     distracted_cooldown_minutes: Optional[int] = None
     over_focus_cooldown_minutes: Optional[int] = None
-    drowsy_trigger_seconds: Optional[int] = None
-    distracted_trigger_seconds: Optional[int] = None
-    over_focus_window_minutes: Optional[int] = None
-    over_focus_threshold_minutes: Optional[int] = None
+    drowsy_trigger_buckets: Optional[int] = None
+    distracted_trigger_buckets: Optional[int] = None
+    over_focus_window_buckets: Optional[int] = None
+    over_focus_threshold_buckets: Optional[int] = None
     cloud_run_url: Optional[str] = None
 
 
@@ -179,6 +179,22 @@ async def get_history(
     }
 
 
+@router.get("/history/bucketed")
+async def get_history_bucketed(
+    start: float = Query(..., description="Start timestamp (Unix epoch)"),
+    end: float = Query(..., description="End timestamp (Unix epoch)"),
+    bucket_minutes: int = Query(5, ge=1, le=60, description="Bucket width in minutes"),
+) -> dict:
+    """Get bucketed state history segments for timeline display."""
+    store = _engine_state.get("history_store")
+    if store is None:
+        raise HTTPException(status_code=503, detail="History store not available")
+
+    logs = await store.get_state_log(start_time=start, end_time=end, limit=100000)
+    segments = build_bucketed_segments(logs, bucket_minutes=bucket_minutes)
+    return {"segments": segments, "count": len(segments)}
+
+
 @router.get("/daily-stats")
 async def get_daily_stats(
     date: Optional[str] = Query(None, description="Date (YYYY-MM-DD), defaults to today"),
@@ -248,10 +264,10 @@ def _config_to_response(config: EngineConfig) -> SettingsResponse:
         drowsy_cooldown_minutes=config.drowsy_cooldown_minutes,
         distracted_cooldown_minutes=config.distracted_cooldown_minutes,
         over_focus_cooldown_minutes=config.over_focus_cooldown_minutes,
-        drowsy_trigger_seconds=config.drowsy_trigger_seconds,
-        distracted_trigger_seconds=config.distracted_trigger_seconds,
-        over_focus_window_minutes=config.over_focus_window_minutes,
-        over_focus_threshold_minutes=config.over_focus_threshold_minutes,
+        drowsy_trigger_buckets=config.drowsy_trigger_buckets,
+        distracted_trigger_buckets=config.distracted_trigger_buckets,
+        over_focus_window_buckets=config.over_focus_window_buckets,
+        over_focus_threshold_buckets=config.over_focus_threshold_buckets,
         cloud_run_url=config.cloud_run_url,
         cloud_auth_email=config.cloud_auth_email,
     )

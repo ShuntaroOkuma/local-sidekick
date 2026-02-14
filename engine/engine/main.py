@@ -40,10 +40,14 @@ from engine.estimation.rule_classifier import (
     classify_unified,
     classify_unified_fallback,
 )
+from engine.history.aggregator import build_bucketed_segments
 from engine.history.store import HistoryStore
 from engine.notification.engine import NotificationEngine
 
 logger = logging.getLogger(__name__)
+
+# Bucket size used for notification scheduling and window calculation
+_BUCKET_SIZE_MINUTES = 5
 
 # --- Global state ---
 
@@ -125,10 +129,10 @@ async def _get_shared_llm(config: EngineConfig):
 def _create_notification_engine(config: EngineConfig) -> NotificationEngine:
     """Create a notification engine from config."""
     return NotificationEngine(
-        drowsy_trigger_seconds=config.drowsy_trigger_seconds,
-        distracted_trigger_seconds=config.distracted_trigger_seconds,
-        over_focus_window_minutes=config.over_focus_window_minutes,
-        over_focus_threshold_minutes=config.over_focus_threshold_minutes,
+        drowsy_trigger_buckets=config.drowsy_trigger_buckets,
+        distracted_trigger_buckets=config.distracted_trigger_buckets,
+        over_focus_window_buckets=config.over_focus_window_buckets,
+        over_focus_threshold_buckets=config.over_focus_threshold_buckets,
         drowsy_cooldown_minutes=config.drowsy_cooldown_minutes,
         distracted_cooldown_minutes=config.distracted_cooldown_minutes,
         over_focus_cooldown_minutes=config.over_focus_cooldown_minutes,
@@ -324,17 +328,13 @@ async def _get_final_classification(
 
 
 async def _integration_loop() -> None:
-    """Background task: unified classification, notifications, history.
+    """Background task: unified classification + history recording.
 
     Consumes raw snapshots from camera/PC loops and runs unified
     classification (rule-based -> LLM -> fallback) to produce a single
-    integrated state.
+    integrated state. Notification checks are handled by _notification_loop.
     Reads from global _config so settings changes take effect dynamically.
     """
-    global _notification_engine
-
-    _notification_engine = _create_notification_engine(_config)
-
     while _should_monitor:
         if _paused:
             await asyncio.sleep(1.0)
@@ -371,12 +371,50 @@ async def _integration_loop() -> None:
             source=final.source,
         )
 
-        # Check for notifications
-        notification = _notification_engine.evaluate(
-            state=integrated.state,
-            timestamp=integrated.timestamp,
-            interval_seconds=_config.integration_interval,
+        await asyncio.sleep(_config.integration_interval)
+
+
+async def _notification_loop() -> None:
+    """Background task: check notifications every 5 minutes using bucketed segments.
+
+    Uses build_bucketed_segments() on the last 90 minutes of history to
+    evaluate notification conditions. This replaces the old per-tick
+    evaluate() approach with a stateless bucket-based check.
+    """
+    global _notification_engine
+
+    _notification_engine = _create_notification_engine(_config)
+
+    while _should_monitor:
+        # Sleep in 10s increments so we respond to stop/pause promptly
+        for _ in range(_BUCKET_SIZE_MINUTES * 6):  # 5min * 6 = 30 iterations * 10s
+            if not _should_monitor:
+                return
+            await asyncio.sleep(10)
+
+        if _paused:
+            continue
+
+        now = time.time()
+        # Derive window from config to stay in sync with over_focus_window_buckets
+        window_minutes = max(
+            _config.over_focus_window_buckets * _BUCKET_SIZE_MINUTES,
+            _config.drowsy_trigger_buckets * _BUCKET_SIZE_MINUTES,
+            _config.distracted_trigger_buckets * _BUCKET_SIZE_MINUTES,
         )
+        window_start = now - window_minutes * 60
+
+        try:
+            logs = await _history_store.get_state_log(
+                start_time=window_start, end_time=now, limit=100000,
+            )
+        except Exception as e:
+            logger.warning("Notification loop: failed to fetch logs: %s", e)
+            continue
+
+        segments = build_bucketed_segments(logs)
+
+        notification = _notification_engine.check_buckets(segments, now)
 
         if notification is not None:
             await _history_store.log_notification(
@@ -390,8 +428,6 @@ async def _integration_loop() -> None:
                 timestamp=notification.timestamp,
             )
 
-        await asyncio.sleep(_config.integration_interval)
-
 
 # --- Start/Stop callbacks ---
 
@@ -403,9 +439,11 @@ async def apply_config(new_config: EngineConfig) -> None:
     _config = new_config
     # Reset LLM load failure flag so tier change can trigger a new load attempt
     _llm_load_failed = False
-    # Recreate notification engine with updated settings
+    # Recreate notification engine with updated settings, preserving cooldown state
     if _notification_engine is not None:
+        old_cooldowns = _notification_engine._last_notification_time.copy()
         _notification_engine = _create_notification_engine(_config)
+        _notification_engine._last_notification_time = old_cooldowns
     logger.info("Applied updated config to running engine.")
 
 
@@ -430,6 +468,7 @@ async def start_monitoring() -> None:
         asyncio.create_task(_camera_loop(), name="camera_loop"),
         asyncio.create_task(_pc_monitor_loop(), name="pc_monitor_loop"),
         asyncio.create_task(_integration_loop(), name="integration_loop"),
+        asyncio.create_task(_notification_loop(), name="notification_loop"),
     ]
     _monitoring_tasks.extend(tasks)
 
@@ -447,7 +486,7 @@ async def pause_monitoring() -> None:
 
 
 async def resume_monitoring() -> None:
-    """Resume monitoring after pause. Resets consecutive state tracking."""
+    """Resume monitoring after pause. Resets notification cooldown timers."""
     global _paused, _latest_camera_snapshot, _latest_pc_snapshot
 
     if not _paused:
@@ -457,10 +496,10 @@ async def resume_monitoring() -> None:
     _latest_camera_snapshot = None
     _latest_pc_snapshot = None
 
-    # Reset notification engine consecutive state so sleep duration
-    # doesn't count toward distracted/drowsy thresholds
+    # Reset notification engine cooldown timers so sleep duration
+    # doesn't interfere with post-resume notification checks
     if _notification_engine is not None:
-        _notification_engine.reset_consecutive()
+        _notification_engine.reset()
 
     _paused = False
     set_engine_state("paused", False)
