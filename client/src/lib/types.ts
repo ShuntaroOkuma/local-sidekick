@@ -40,6 +40,7 @@ export interface DailyStats {
 
 export interface DailyReport {
   summary: string;
+  pattern?: string;
   highlights: string[];
   concerns: string[];
   tomorrow_tip: string;

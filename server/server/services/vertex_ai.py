@@ -64,7 +64,11 @@ class VertexAIService:
     # ------------------------------------------------------------------
 
     def _build_prompt(self, stats: dict[str, Any]) -> str:
-        return f"""あなたは生産性コーチです。以下のユーザーの1日のPC作業データを分析し、改善提案を含むレポートを生成してください。
+        return f"""あなたは生産性コーチです。以下のユーザーの1日のPC作業データを分析し、**時間帯ごとの集中パターン**に注目して、改善提案を含むレポートを生成してください。
+
+## 分析の観点
+1. **時間帯パターン**: 集中ブロックの時間帯から、何時台に集中しやすく何時台に崩れやすいかを特定してください
+2. **改善アクション**: パターンに基づいた具体的で実行可能な改善提案をしてください
 
 ## 今日のデータ
 - 日付: {stats.get('date', 'unknown')}
@@ -72,18 +76,19 @@ class VertexAIService:
 - 眠気時間: {stats.get('drowsy_minutes', 0)}分
 - 散漫時間: {stats.get('distracted_minutes', 0)}分
 - 離席時間: {stats.get('away_minutes', 0)}分
-- アイドル時間: {stats.get('idle_minutes', 0)}分
 - 通知回数: {stats.get('notification_count', 0)}回
-- 集中ブロック: {stats.get('focus_blocks', [])}
-- 使用アプリ: {stats.get('top_apps', [])}
+- 集中ブロック（開始-終了, 分数）: {stats.get('focus_blocks', [])}
+- 通知履歴（種類, 時刻, ユーザー反応）: {stats.get('notifications', [])}
+- 使用アプリ上位: {stats.get('top_apps', [])}
 
 ## 出力形式（JSON）
 以下のJSON形式で出力してください。JSON以外は出力しないでください。
 {{
   "summary": "1-2文の総括。具体的な数値を含めてください。",
-  "highlights": ["良かった点を1-3個"],
-  "concerns": ["改善が必要な点を1-3個"],
-  "tomorrow_tip": "明日試してほしい具体的な1つの行動提案"
+  "pattern": "時間帯の集中パターンを1-2文で記述。例: '午前中に長い集中ブロックが集中しており、14時以降は散漫な時間帯が増えています'",
+  "highlights": ["良かった点を1-3個。集中ブロックの時間帯や長さに具体的に言及してください"],
+  "concerns": ["改善が必要な点を1-3個。何時台にどんな問題が起きたか具体的に言及してください"],
+  "tomorrow_tip": "パターン分析に基づいた、明日試してほしい具体的な1つの行動提案"
 }}"""
 
     def _parse_response(self, text: str, stats: dict[str, Any]) -> dict[str, Any]:
@@ -114,12 +119,21 @@ class VertexAIService:
         total = focused + drowsy + distracted + stats.get("away_minutes", 0) + stats.get("idle_minutes", 0)
         pct = round(focused / total * 100) if total > 0 else 0
 
+        # Build a pattern description from focus blocks if available
+        focus_blocks = stats.get("focus_blocks", [])
+        if focus_blocks:
+            block_times = ", ".join(f"{b.get('start', '?')}〜{b.get('end', '?')}" for b in focus_blocks[:3])
+            pattern = f"集中ブロックは {block_times} に発生しています。（※ダミーレポート: Vertex AI未接続）"
+        else:
+            pattern = "集中ブロックのデータが不足しているため、パターンの分析ができませんでした。（※ダミーレポート: Vertex AI未接続）"
+
         return {
             "summary": (
                 f"本日は合計{total:.0f}分の作業時間のうち、"
                 f"{focused:.0f}分({pct}%)集中できました。"
                 f"（※ダミーレポート: Vertex AI未接続）"
             ),
+            "pattern": pattern,
             "highlights": [
                 f"集中時間が{focused:.0f}分確保できています。",
             ],

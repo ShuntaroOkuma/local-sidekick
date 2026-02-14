@@ -96,6 +96,18 @@ export function Report() {
             </p>
           </div>
 
+          {/* Pattern */}
+          {report.pattern && (
+            <div className="bg-gray-800/50 rounded-xl p-5">
+              <h2 className="text-sm font-semibold text-purple-400 mb-2">
+                集中パターン
+              </h2>
+              <p className="text-gray-300 text-sm leading-relaxed">
+                {report.pattern}
+              </p>
+            </div>
+          )}
+
           {/* Highlights */}
           {report.highlights.length > 0 && (
             <div className="bg-gray-800/50 rounded-xl p-5">
