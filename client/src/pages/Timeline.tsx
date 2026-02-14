@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
 import { TimelineChart } from "../components/TimelineChart";
-import { useSettings } from "../hooks/useSettings";
 import { api } from "../lib/api";
 import type { HistoryEntry, NotificationEntry } from "../lib/types";
+
+const START_HOUR = 0;
+const END_HOUR = 24;
 
 function formatDateLabel(date: Date): string {
   return date.toLocaleDateString("ja-JP", {
@@ -21,21 +23,12 @@ function isSameDay(a: Date, b: Date): boolean {
   );
 }
 
-function parseHour(timeStr: string): number {
-  const h = parseInt(timeStr.split(":")[0], 10);
-  return Number.isFinite(h) ? h : 9;
-}
-
-/** Build Unix timestamp range for a given date + hour range */
-function buildTimeRange(
-  date: Date,
-  startHour: number,
-  endHour: number
-): { start: number; end: number } {
+/** Build Unix timestamp range for a given date (full day) */
+function buildTimeRange(date: Date): { start: number; end: number } {
   const start = new Date(date);
-  start.setHours(startHour, 0, 0, 0);
+  start.setHours(START_HOUR, 0, 0, 0);
   const end = new Date(date);
-  end.setHours(endHour, 0, 0, 0);
+  end.setHours(END_HOUR, 0, 0, 0);
   return {
     start: Math.floor(start.getTime() / 1000),
     end: Math.floor(end.getTime() / 1000),
@@ -48,10 +41,6 @@ export function Timeline() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedDate, setSelectedDate] = useState(() => new Date());
-  const { settings } = useSettings();
-
-  const startHour = parseHour(settings.working_hours_start);
-  const endHour = parseHour(settings.working_hours_end);
 
   const isToday = isSameDay(selectedDate, new Date());
 
@@ -60,7 +49,7 @@ export function Timeline() {
       setLoading(true);
       setError(null);
       try {
-        const range = buildTimeRange(selectedDate, startHour, endHour);
+        const range = buildTimeRange(selectedDate);
         const [historyData, notifsData] = await Promise.all([
           api.getHistory(range),
           api.getNotifications(range),
@@ -80,7 +69,7 @@ export function Timeline() {
       const interval = setInterval(fetchData, 60000);
       return () => clearInterval(interval);
     }
-  }, [selectedDate, startHour, endHour]);
+  }, [selectedDate]);
 
   function goToPreviousDay() {
     setSelectedDate((prev) => {
@@ -177,8 +166,8 @@ export function Timeline() {
               <TimelineChart
                 history={history}
                 notifications={notifications}
-                startHour={startHour}
-                endHour={endHour}
+                startHour={START_HOUR}
+                endHour={END_HOUR}
               />
             ) : (
               <div className="text-center py-8 text-gray-500">
