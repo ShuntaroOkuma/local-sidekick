@@ -319,7 +319,7 @@ class PythonBridge {
 
 #### タイムライン画面 (Timeline.tsx)
 
-- 横軸: 時間（稼働時間帯）
+- 横軸: 時間（終日 0:00-24:00）
 - カラーバー: 状態ごとに色分け（緑=focused, 黄=distracted, 赤=drowsy, 灰=away/idle）
 - 通知発火ポイントをマーカー表示
 
@@ -332,7 +332,6 @@ class PythonBridge {
 
 #### 設定画面 (Settings.tsx)
 
-- 稼働時間（開始/終了）
 - カメラON/OFF
 - サーバ同期ON/OFF
 - アカウント連携
@@ -397,8 +396,6 @@ users/{userId}
   - created_at: timestamp
 
 users/{userId}/settings
-  - working_hours_start: "09:00"
-  - working_hours_end: "19:00"
   - camera_enabled: true
   - sync_enabled: true
 
@@ -436,7 +433,7 @@ Camera State + PC State → Integrator → Final State
 ### 4.2 日次レポート生成フロー
 
 ```
-稼働時間終了 or ユーザー操作
+ユーザー操作
   → SQLite集計 (state_log → daily_summary)
   → Cloud Run API (POST /api/reports/generate)
   → Vertex AI (Gemini) でレポート生成

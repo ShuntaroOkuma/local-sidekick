@@ -59,8 +59,6 @@ class StateResponse(BaseModel):
 
 
 class SettingsResponse(BaseModel):
-    working_hours_start: str
-    working_hours_end: str
     camera_enabled: bool
     camera_index: int
     model_tier: str
@@ -78,8 +76,6 @@ class SettingsResponse(BaseModel):
 
 
 class SettingsUpdate(BaseModel):
-    working_hours_start: Optional[str] = None
-    working_hours_end: Optional[str] = None
     camera_enabled: Optional[bool] = None
     camera_index: Optional[int] = None
     model_tier: Optional[str] = None
@@ -242,8 +238,6 @@ class CloudAuthRequest(BaseModel):
 def _config_to_response(config: EngineConfig) -> SettingsResponse:
     """Convert an EngineConfig to a SettingsResponse."""
     return SettingsResponse(
-        working_hours_start=config.working_hours_start,
-        working_hours_end=config.working_hours_end,
         camera_enabled=config.camera_enabled,
         camera_index=config.camera_index,
         model_tier=config.model_tier,

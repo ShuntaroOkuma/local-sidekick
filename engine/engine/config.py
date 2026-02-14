@@ -51,10 +51,6 @@ def get_text_model(backend: str = "llama_cpp", tier: str = "lightweight") -> str
 class EngineConfig:
     """Engine configuration with defaults."""
 
-    # Working hours
-    working_hours_start: str = "09:00"
-    working_hours_end: str = "19:00"
-
     # Notification settings
     drowsy_cooldown_minutes: int = 15
     distracted_cooldown_minutes: int = 20

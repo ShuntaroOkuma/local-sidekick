@@ -34,15 +34,11 @@ class TokenResponse(BaseModel):
 
 
 class SettingsUpdate(BaseModel):
-    working_hours_start: Optional[str] = None
-    working_hours_end: Optional[str] = None
     camera_enabled: Optional[bool] = None
     sync_enabled: Optional[bool] = None
 
 
 class SettingsResponse(BaseModel):
-    working_hours_start: str = "09:00"
-    working_hours_end: str = "19:00"
     camera_enabled: bool = True
     sync_enabled: bool = True
 

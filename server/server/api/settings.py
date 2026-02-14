@@ -11,8 +11,6 @@ from server.models.schemas import SettingsResponse, SettingsUpdate
 router = APIRouter()
 
 DEFAULT_SETTINGS: dict = {
-    "working_hours_start": "09:00",
-    "working_hours_end": "19:00",
     "camera_enabled": True,
     "sync_enabled": True,
 }

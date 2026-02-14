@@ -108,39 +108,6 @@ export function Settings() {
       )}
 
       <div className="space-y-5">
-        {/* Working hours */}
-        <div className="bg-gray-800/50 rounded-xl p-5 space-y-4">
-          <h2 className="text-sm font-semibold text-gray-300">稼働時間</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="text-xs text-gray-500 block mb-1">
-                開始時刻
-              </label>
-              <input
-                type="time"
-                value={form.working_hours_start}
-                onChange={(e) =>
-                  setForm({ ...form, working_hours_start: e.target.value })
-                }
-                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:border-blue-500 focus:outline-none"
-              />
-            </div>
-            <div>
-              <label className="text-xs text-gray-500 block mb-1">
-                終了時刻
-              </label>
-              <input
-                type="time"
-                value={form.working_hours_end}
-                onChange={(e) =>
-                  setForm({ ...form, working_hours_end: e.target.value })
-                }
-                className="w-full bg-gray-900 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:border-blue-500 focus:outline-none"
-              />
-            </div>
-          </div>
-        </div>
-
         {/* Avatar toggle */}
         <div className="bg-gray-800/50 rounded-xl p-5">
           <div className="flex items-center justify-between">
