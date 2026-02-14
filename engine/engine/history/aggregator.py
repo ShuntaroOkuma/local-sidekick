@@ -154,3 +154,89 @@ def _extract_focus_blocks(
             })
 
     return blocks
+
+
+def build_bucketed_segments(
+    logs: list[dict],
+    bucket_minutes: int = 5,
+    max_entry_duration: float = 30.0,
+) -> list[dict]:
+    """Group raw state log entries into time-bucketed segments.
+
+    Algorithm (mirrors frontend buildSegments):
+      1. Sort by timestamp, compute duration per entry
+      2. Assign each entry to a fixed-width time bucket
+      3. Majority vote (by total duration) picks the dominant state per bucket
+      4. Merge consecutive same-state buckets into segments
+      5. Buckets with no data are skipped (produce gaps)
+
+    Args:
+        logs: Raw state log entries from get_state_log().
+        bucket_minutes: Width of each time bucket in minutes.
+        max_entry_duration: Maximum seconds credited to a single entry.
+
+    Returns:
+        List of segment dicts with state, start_time, end_time,
+        duration_min, and breakdown.
+    """
+    if not logs:
+        return []
+
+    sorted_logs = sorted(logs, key=lambda x: x["timestamp"])
+    bucket_size = bucket_minutes * 60
+
+    # Step 1: Assign entries to buckets with duration-weighted states
+    # bucket_key -> {state -> total_seconds}
+    buckets: dict[float, dict[str, float]] = {}
+
+    for i, log in enumerate(sorted_logs):
+        ts = log["timestamp"]
+        state = log["integrated_state"]
+
+        # Duration: time until next entry, capped at max_entry_duration
+        if i + 1 < len(sorted_logs):
+            duration = min(
+                sorted_logs[i + 1]["timestamp"] - ts,
+                max_entry_duration,
+            )
+        else:
+            duration = max_entry_duration
+
+        bucket_key = (ts // bucket_size) * bucket_size
+
+        if bucket_key not in buckets:
+            buckets[bucket_key] = {}
+        buckets[bucket_key][state] = buckets[bucket_key].get(state, 0.0) + duration
+
+    # Step 2: Pick dominant state per bucket (majority vote by duration)
+    bucket_results: list[tuple[float, str, dict[str, float]]] = []
+    for bucket_key in sorted(buckets):
+        state_durations = buckets[bucket_key]
+        dominant_state = max(state_durations, key=state_durations.get)  # type: ignore[arg-type]
+        bucket_results.append((bucket_key, dominant_state, dict(state_durations)))
+
+    # Step 3: Merge consecutive same-state buckets into segments
+    segments: list[dict] = []
+    for bucket_key, state, breakdown in bucket_results:
+        bucket_end = bucket_key + bucket_size
+
+        if segments and segments[-1]["state"] == state:
+            last = segments[-1]
+            # Only merge if buckets are adjacent (no gap)
+            if abs(last["end_time"] - bucket_key) < 1.0:
+                last["end_time"] = bucket_end
+                last["duration_min"] = (last["end_time"] - last["start_time"]) / 60.0
+                # Merge breakdowns
+                for s, dur in breakdown.items():
+                    last["breakdown"][s] = last["breakdown"].get(s, 0.0) + dur
+                continue
+
+        segments.append({
+            "state": state,
+            "start_time": bucket_key,
+            "end_time": bucket_end,
+            "duration_min": bucket_size / 60.0,
+            "breakdown": dict(breakdown),
+        })
+
+    return segments

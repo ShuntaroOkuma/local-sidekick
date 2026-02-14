@@ -33,7 +33,7 @@ from engine.api.cloud_client import (
     cloud_register,
 )
 from engine.config import EngineConfig, load_config, save_config
-from engine.history.aggregator import compute_daily_stats
+from engine.history.aggregator import build_bucketed_segments, compute_daily_stats
 
 logger = logging.getLogger(__name__)
 
@@ -177,6 +177,23 @@ async def get_history(
         "notifications": notifications,
         "count": len(logs),
     }
+
+
+@router.get("/history/bucketed")
+async def get_history_bucketed(
+    start: float = Query(..., description="Start timestamp (Unix epoch)"),
+    end: float = Query(..., description="End timestamp (Unix epoch)"),
+    bucket_minutes: int = Query(5, ge=1, le=60, description="Bucket width in minutes"),
+) -> dict:
+    """Get bucketed state history segments for timeline display."""
+    store = _engine_state.get("history_store")
+    if store is None:
+        raise HTTPException(status_code=503, detail="History store not available")
+
+    logs = await store.get_state_log(start_time=start, end_time=end, limit=100000)
+    logs.sort(key=lambda x: x["timestamp"])
+    segments = build_bucketed_segments(logs, bucket_minutes=bucket_minutes)
+    return {"segments": segments, "count": len(segments)}
 
 
 @router.get("/daily-stats")
