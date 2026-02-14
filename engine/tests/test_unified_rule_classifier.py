@@ -109,8 +109,8 @@ class TestClassifyUnified:
 
     # -- Ambiguous cases that return None (LLM needed) --
 
-    def test_pc_idle_camera_facing_returns_none(self) -> None:
-        """PC idle but camera facing screen -> None (LLM needed, could be MTG)."""
+    def test_pc_idle_camera_facing_returns_focused(self) -> None:
+        """PC idle but camera facing screen -> focused (reading/watching)."""
         camera = make_camera_snapshot(
             ear_average=0.28,
             head_pose={"yaw": 3, "pitch": -5},
@@ -121,7 +121,10 @@ class TestClassifyUnified:
 
         result = classify_unified(camera, pc)
 
-        assert result is None
+        assert result is not None
+        assert result.state == "focused"
+        assert result.confidence == 0.75
+        assert result.source == "rule"
 
     def test_head_turned_35_returns_focused(self) -> None:
         """yaw=35 deg with clear signals -> focused (within 40° threshold)."""
@@ -140,8 +143,8 @@ class TestClassifyUnified:
         assert result.state == "focused"
         assert result.confidence == 0.9
 
-    def test_head_turned_42_returns_none(self) -> None:
-        """yaw=42 deg -> None (exceeds 40° threshold, LLM needed)."""
+    def test_head_turned_42_returns_focused_multi_monitor(self) -> None:
+        """yaw=42 deg with PC active -> focused (multi-monitor rule)."""
         camera = make_camera_snapshot(
             ear_average=0.29,
             head_pose={"yaw": 42, "pitch": -2},
@@ -152,7 +155,23 @@ class TestClassifyUnified:
 
         result = classify_unified(camera, pc)
 
-        # 42 degrees exceeds the 40-degree threshold for the focused rule
+        assert result is not None
+        assert result.state == "focused"
+        assert result.confidence == 0.75
+        assert result.source == "rule"
+
+    def test_head_turned_65_returns_none(self) -> None:
+        """yaw=65 deg -> None (exceeds 60° multi-monitor threshold, LLM needed)."""
+        camera = make_camera_snapshot(
+            ear_average=0.29,
+            head_pose={"yaw": 65, "pitch": -2},
+            perclos_drowsy=False,
+            yawning=False,
+        )
+        pc = make_pc_snapshot()
+
+        result = classify_unified(camera, pc)
+
         assert result is None
 
     def test_drowsy_signals_returns_none(self) -> None:
@@ -284,8 +303,8 @@ class TestClassifyUnified:
         if result is not None:
             assert result.state != "away" or result.confidence != 0.9
 
-    def test_focused_requires_ear_above_threshold(self) -> None:
-        """EAR <= 0.27 prevents focused rule from firing."""
+    def test_slightly_low_ear_pc_active_returns_focused(self) -> None:
+        """EAR=0.27 (slightly low) with PC active -> focused via relaxed rule."""
         camera = make_camera_snapshot(
             ear_average=0.27,
             head_pose={"yaw": 5, "pitch": -3},
@@ -296,11 +315,26 @@ class TestClassifyUnified:
 
         result = classify_unified(camera, pc)
 
-        # EAR 0.27 is not > 0.27, so focused rule should not fire
+        assert result is not None
+        assert result.state == "focused"
+        assert result.confidence == 0.8
+
+    def test_very_low_ear_returns_none(self) -> None:
+        """EAR=0.21 (below relaxed threshold) -> None (LLM needed)."""
+        camera = make_camera_snapshot(
+            ear_average=0.21,
+            head_pose={"yaw": 5, "pitch": -3},
+            perclos_drowsy=False,
+            yawning=False,
+        )
+        pc = make_pc_snapshot(is_idle=False, idle_seconds=2)
+
+        result = classify_unified(camera, pc)
+
         assert result is None
 
-    def test_focused_requires_yaw_below_40(self) -> None:
-        """yaw >= 40 prevents focused rule from firing."""
+    def test_yaw_40_pc_active_returns_focused_multi_monitor(self) -> None:
+        """yaw=40 with PC active -> focused via multi-monitor rule."""
         camera = make_camera_snapshot(
             ear_average=0.30,
             head_pose={"yaw": 40, "pitch": 0},
@@ -311,11 +345,12 @@ class TestClassifyUnified:
 
         result = classify_unified(camera, pc)
 
-        # yaw 40 is not < 40, so focused rule should not fire
-        assert result is None
+        assert result is not None
+        assert result.state == "focused"
+        assert result.confidence == 0.75
 
     def test_focused_requires_pitch_below_30(self) -> None:
-        """pitch >= 30 prevents focused rule from firing."""
+        """pitch >= 30 prevents all focused rules from firing."""
         camera = make_camera_snapshot(
             ear_average=0.30,
             head_pose={"yaw": 5, "pitch": 30},
@@ -326,7 +361,7 @@ class TestClassifyUnified:
 
         result = classify_unified(camera, pc)
 
-        # pitch 30 is not < 30, so focused rule should not fire
+        # pitch 30 is not < 30, so no focused rule fires
         assert result is None
 
     def test_pc_idle_60s_boundary(self) -> None:
@@ -346,8 +381,8 @@ class TestClassifyUnified:
         assert result.state == "focused"
         assert result.confidence == 0.9
 
-    def test_pc_idle_61s_blocks_focused(self) -> None:
-        """idle_seconds 61 with is_idle=False -> PC counts as idle."""
+    def test_pc_idle_61s_still_focused_reading(self) -> None:
+        """idle_seconds 61, camera OK -> focused (reading/watching rule)."""
         camera = make_camera_snapshot(
             ear_average=0.30,
             head_pose={"yaw": 5, "pitch": -3},
@@ -358,8 +393,10 @@ class TestClassifyUnified:
 
         result = classify_unified(camera, pc)
 
-        # idle_seconds > 60 -> pc_not_idle is False -> focused rule blocked
-        assert result is None
+        # Rule 4: PC idle but facing screen with no drowsy signs
+        assert result is not None
+        assert result.state == "focused"
+        assert result.confidence == 0.75
 
 
 # ===========================================================================

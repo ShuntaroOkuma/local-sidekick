@@ -12,9 +12,9 @@ STATES: focused, drowsy, distracted, away
 DEFAULT: If unsure, choose "focused". Focused is the normal working state.
 
 RULES:
-- "focused": DEFAULT. Working, reading, meeting, conversation, multi-monitor use. Head turned up to 40° is normal (multi-monitor, talking to someone). No PC input can still be focused (watching video, in a meeting, reading).
-- "drowsy": Multiple physical sleepiness signals together: low EAR (<0.22), perclos_drowsy=true, yawning, head drooping. A single weak signal alone is NOT enough.
-- "distracted": Rapid app switching (>6 switches, >4 apps) or sustained purposeless movement. Head turning alone is NOT distracted.
+- "focused": DEFAULT state. Working, reading, meeting, conversation, multi-monitor use. Head turned up to 60° is normal (multi-monitor, talking). No PC input can still be focused (watching video, meeting, reading). Slightly low EAR (0.22-0.27) without other drowsy signs = focused.
+- "drowsy": REQUIRES multiple strong signals together: very low EAR (<0.22) AND perclos_drowsy=true, or yawning with low EAR. One weak signal alone is NEVER enough for drowsy.
+- "distracted": Rapid app switching (>6 switches, >4 apps). Head turning alone is NOT distracted.
 - "away": No face detected.
 
 Output ONLY: {"state":"...","confidence":0.0-1.0,"reasoning":"brief"}
@@ -25,6 +25,12 @@ Cam:{"ear_average":0.28,"head_pose":{"yaw":32},"perclos_drowsy":false,"yawning":
 
 Cam:{"ear_average":0.18,"perclos_drowsy":true,"yawning":false,"head_pose":{"yaw":2,"pitch":12}} PC:{"active_app":"Code","keyboard_rate_window":2}
 → {"state":"drowsy","confidence":0.85,"reasoning":"Very low EAR with PERCLOS"}
+
+Cam:{"ear_average":0.24,"head_pose":{"yaw":5,"pitch":8},"perclos_drowsy":false,"yawning":false} PC:{"active_app":"Safari","idle_seconds":95,"is_idle":true}
+→ {"state":"focused","confidence":0.75,"reasoning":"Reading or watching, no drowsy signs"}
+
+Cam:{"ear_average":0.25,"head_pose":{"yaw":-48},"perclos_drowsy":false,"yawning":false} PC:{"active_app":"Code","keyboard_rate_window":40}
+→ {"state":"focused","confidence":0.80,"reasoning":"Multi-monitor coding, eyes open"}
 
 Cam:{"ear_average":0.30,"head_pose":{"yaw":-35},"perclos_drowsy":false,"yawning":false} PC:{"active_app":"Code","keyboard_rate_window":60,"mouse_rate_window":30}
 → {"state":"focused","confidence":0.90,"reasoning":"Active coding, second monitor"}"""
