@@ -25,7 +25,9 @@ class ClassificationResult:
 # ---------------------------------------------------------------------------
 AWAY_FACE_NOT_DETECTED_RATIO = 0.7
 FOCUSED_MIN_EAR = 0.27
+FOCUSED_RELAXED_MIN_EAR = 0.22
 FOCUSED_MAX_YAW = 40
+FOCUSED_MULTI_MONITOR_MAX_YAW = 60
 FOCUSED_MAX_PITCH = 30
 PC_NOT_IDLE_MAX_SECONDS = 60
 FALLBACK_DISTRACTED_YAW = 45
@@ -112,6 +114,64 @@ def classify_unified(
                 state="focused",
                 confidence=0.9,
                 reasoning="Eyes open, facing screen, no drowsiness signals, PC active",
+                source="rule",
+            )
+
+    # --- Additional focused rules for cases that would otherwise go to LLM ---
+
+    no_drowsy_signals = (
+        not perclos_drowsy
+        and not yawning
+        and ear_avg is not None
+        and ear_avg > FOCUSED_RELAXED_MIN_EAR
+    )
+
+    # Rule 4: Reading/watching — PC idle but camera shows attentive
+    if (
+        no_drowsy_signals
+        and head_pose is not None
+        and not pc_not_idle  # PC IS idle
+    ):
+        yaw, pitch = _get_head_pose_values(head_pose)
+        if yaw < FOCUSED_MAX_YAW and pitch < FOCUSED_MAX_PITCH:
+            return ClassificationResult(
+                state="focused",
+                confidence=0.75,
+                reasoning="Facing screen, no drowsy signs; likely reading or watching",
+                source="rule",
+            )
+
+    # Rule 5: Slightly low EAR but no other drowsy signals + PC active
+    if (
+        no_drowsy_signals
+        and ear_avg <= FOCUSED_MIN_EAR  # 0.22 < EAR <= 0.27
+        and head_pose is not None
+        and pc_not_idle
+    ):
+        yaw, pitch = _get_head_pose_values(head_pose)
+        if yaw < FOCUSED_MAX_YAW and pitch < FOCUSED_MAX_PITCH:
+            return ClassificationResult(
+                state="focused",
+                confidence=0.8,
+                reasoning="EAR slightly low but no drowsy signals, PC active",
+                source="rule",
+            )
+
+    # Rule 6: Multi-monitor — head turned 40-60° but PC active, eyes OK
+    if (
+        no_drowsy_signals
+        and head_pose is not None
+        and pc_not_idle
+    ):
+        yaw, pitch = _get_head_pose_values(head_pose)
+        if (
+            FOCUSED_MAX_YAW <= yaw < FOCUSED_MULTI_MONITOR_MAX_YAW
+            and pitch < FOCUSED_MAX_PITCH
+        ):
+            return ClassificationResult(
+                state="focused",
+                confidence=0.75,
+                reasoning=f"Head turned (yaw={yaw:.0f}) but PC active, likely multi-monitor",
                 source="rule",
             )
 

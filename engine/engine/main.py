@@ -267,6 +267,24 @@ async def _pc_monitor_loop() -> None:
 
 # --- Integration + notification + history loop ---
 
+# Fields to keep when sending camera data to the LLM.
+# Excludes noisy statistics that the 3B model over-interprets.
+_LLM_CAMERA_FIELDS = {
+    "face_detected",
+    "ear_average",
+    "perclos_drowsy",
+    "yawning",
+    "head_pose",
+    "perclos",
+    "blinks_per_minute",
+    "mar",
+}
+
+
+def _filter_camera_for_llm(camera_snap: dict) -> dict:
+    """Keep only fields relevant to the LLM prompt examples."""
+    return {k: v for k, v in camera_snap.items() if k in _LLM_CAMERA_FIELDS}
+
 
 async def _get_final_classification(
     camera_snap: Optional[dict], pc_snap: Optional[dict],
@@ -285,7 +303,7 @@ async def _get_final_classification(
     if llm is None:
         return classify_unified_fallback(camera_snap, pc_snap)
 
-    camera_json = json.dumps(camera_snap) if camera_snap else "(unavailable)"
+    camera_json = json.dumps(_filter_camera_for_llm(camera_snap)) if camera_snap else "(unavailable)"
     pc_json = json.dumps(pc_snap) if pc_snap else "(unavailable)"
     user_prompt = format_unified_prompt(camera_json, pc_json)
 
