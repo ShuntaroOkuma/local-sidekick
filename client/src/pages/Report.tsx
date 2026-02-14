@@ -11,14 +11,47 @@ export function Report() {
   const [generating, setGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+  const [selectedDate, setSelectedDate] = useState<string>(() => {
+    const d = new Date();
+    return d.toISOString().split("T")[0];
+  });
+  const [reportDates, setReportDates] = useState<string[]>([]);
+
+  const todayStr = new Date().toISOString().split("T")[0];
+  const isToday = selectedDate === todayStr;
+
+  const navigateDate = (delta: number) => {
+    const current = new Date(selectedDate + "T00:00:00");
+    current.setDate(current.getDate() + delta);
+    const next = current.toISOString().split("T")[0];
+    if (next > todayStr) return;
+    setSelectedDate(next);
+  };
+
+  useEffect(() => {
+    api.listReports().then(setReportDates).catch(() => {});
+  }, []);
+
   useEffect(() => {
     async function fetchData() {
       setLoading(true);
+      setError(null);
+      setReport(null);
       try {
-        const data = await api.getDailyStats();
-        setStats(data);
-        if (data.report) {
-          setReport(data.report);
+        if (isToday) {
+          const data = await api.getDailyStats();
+          setStats(data);
+          if (data.report) {
+            setReport(data.report);
+          }
+        } else {
+          setStats(null);
+          try {
+            const data = await api.getReport(selectedDate);
+            setReport(data);
+          } catch {
+            // 404 = no report for this date
+          }
         }
       } catch (err) {
         console.error("Failed to fetch report data:", err);
@@ -27,9 +60,8 @@ export function Report() {
         setLoading(false);
       }
     }
-
     fetchData();
-  }, []);
+  }, [selectedDate]);
 
   const handleGenerate = async () => {
     setGenerating(true);
@@ -48,12 +80,6 @@ export function Report() {
     }
   };
 
-  const today = new Date().toLocaleDateString("ja-JP", {
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-
   if (loading) {
     return (
       <div className="space-y-4">
@@ -65,9 +91,59 @@ export function Report() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-xl font-bold text-gray-100">Daily Report</h1>
-        <p className="text-sm text-gray-500 mt-1">{today}</p>
+      {/* Date Navigation */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-xl font-bold text-gray-100">Daily Report</h1>
+        </div>
+        <div className="flex items-center gap-3">
+          <button
+            onClick={() => navigateDate(-1)}
+            className="p-1.5 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-gray-200 transition-colors"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-5 w-5"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fillRule="evenodd"
+                d="M12.707 5.293a1 1 0 010 1.414L9.414 10l3.293 3.293a1 1 0 01-1.414 1.414l-4-4a1 1 0 010-1.414l4-4a1 1 0 011.414 0z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </button>
+          <span className="text-sm text-gray-300 min-w-[120px] text-center">
+            {isToday
+              ? "今日"
+              : new Date(selectedDate + "T00:00:00").toLocaleDateString(
+                  "ja-JP",
+                  {
+                    month: "long",
+                    day: "numeric",
+                  }
+                )}
+          </span>
+          <button
+            onClick={() => navigateDate(1)}
+            disabled={isToday}
+            className="p-1.5 rounded-lg hover:bg-gray-700 text-gray-400 hover:text-gray-200 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="h-5 w-5"
+              viewBox="0 0 20 20"
+              fill="currentColor"
+            >
+              <path
+                fillRule="evenodd"
+                d="M7.293 14.707a1 1 0 010-1.414L10.586 10 7.293 6.707a1 1 0 011.414-1.414l4 4a1 1 0 010 1.414l-4 4a1 1 0 01-1.414 0z"
+                clipRule="evenodd"
+              />
+            </svg>
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -158,6 +234,16 @@ export function Report() {
             </div>
           )}
         </div>
+      ) : !isToday ? (
+        <div className="bg-gray-800/50 rounded-xl p-8 text-center">
+          {!settings.sync_enabled ? (
+            <p className="text-gray-400">
+              過去のレポートを表示するにはCloud同期を有効にしてください
+            </p>
+          ) : (
+            <p className="text-gray-400">この日のレポートはありません</p>
+          )}
+        </div>
       ) : (
         <div className="bg-gray-800/50 rounded-xl p-8 text-center">
           <p className="text-gray-400 mb-4">
@@ -165,9 +251,9 @@ export function Report() {
           </p>
           {stats && (
             <p className="text-xs text-gray-600 mb-4">
-              集中 {Math.round(stats.focused_minutes)}分 /
-              散漫 {Math.round(stats.distracted_minutes)}分 /
-              眠気 {Math.round(stats.drowsy_minutes)}分
+              集中 {Math.round(stats.focused_minutes)}分 / 散漫{" "}
+              {Math.round(stats.distracted_minutes)}分 / 眠気{" "}
+              {Math.round(stats.drowsy_minutes)}分
             </p>
           )}
           <button
