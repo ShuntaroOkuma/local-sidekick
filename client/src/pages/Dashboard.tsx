@@ -56,17 +56,25 @@ export function Dashboard() {
         />
       </div>
 
-      {/* Sub-states */}
+      {/* Judgment info */}
       {state && (
-        <div className="flex justify-center gap-6 text-sm text-gray-500">
-          <div>
-            <span className="text-gray-600">Camera: </span>
-            <span className="text-gray-300">{state.camera_state}</span>
+        <div className="text-center space-y-1">
+          <div className="flex justify-center items-center gap-2 text-xs">
+            <span
+              className={`px-2 py-0.5 rounded-full font-medium ${
+                state.source === "llm"
+                  ? "bg-purple-500/20 text-purple-300"
+                  : "bg-blue-500/20 text-blue-300"
+              }`}
+            >
+              {state.source === "llm" ? "LLM判定" : "ルール判定"}
+            </span>
           </div>
-          <div>
-            <span className="text-gray-600">PC: </span>
-            <span className="text-gray-300">{state.pc_state}</span>
-          </div>
+          {state.reasoning && (
+            <p className="text-xs text-gray-500 max-w-xs mx-auto">
+              {state.reasoning}
+            </p>
+          )}
         </div>
       )}
 

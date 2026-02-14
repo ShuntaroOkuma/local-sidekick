@@ -7,6 +7,8 @@ export interface EngineState {
   confidence: number;
   camera_state: UserState;
   pc_state: string;
+  reasoning: string;
+  source: string;
   timestamp: number;
 }
 

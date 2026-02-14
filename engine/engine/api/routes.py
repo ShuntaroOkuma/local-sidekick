@@ -55,6 +55,7 @@ class StateResponse(BaseModel):
     camera_state: Optional[str] = None
     pc_state: Optional[str] = None
     reasoning: str = ""
+    source: str = ""
     timestamp: float = 0.0
 
 
@@ -156,6 +157,7 @@ async def get_state() -> StateResponse:
         camera_state=current.get("camera_state"),
         pc_state=current.get("pc_state"),
         reasoning=current.get("reasoning", ""),
+        source=current.get("source", ""),
         timestamp=current.get("timestamp", 0.0),
     )
 

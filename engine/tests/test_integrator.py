@@ -35,6 +35,7 @@ class TestBuildIntegratedState:
         assert integrated.state == "focused"
         assert integrated.confidence == 0.9
         assert integrated.reasoning == "Eyes open, facing screen, PC active"
+        assert integrated.source == "rule"
         assert integrated.timestamp > 0
 
     def test_camera_and_pc_state_are_none(self) -> None:
@@ -69,5 +70,6 @@ class TestBuildIntegratedState:
         assert d["camera_state"] is None
         assert d["pc_state"] is None
         assert d["reasoning"] == "No face detected"
+        assert d["source"] == "rule"
         assert "timestamp" in d
         assert isinstance(d["timestamp"], float)
