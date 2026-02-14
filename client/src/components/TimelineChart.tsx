@@ -1,20 +1,18 @@
 import { useState, useRef } from "react";
 import type {
-  HistoryEntry,
+  BucketedSegment,
   NotificationEntry,
   NotificationAction,
 } from "../lib/types";
 
 interface TimelineChartProps {
-  history: HistoryEntry[];
+  segments: BucketedSegment[];
   notifications?: NotificationEntry[];
   startHour?: number;
   endHour?: number;
 }
 
-const BUCKET_MINUTES = 5;
 const PX_PER_HOUR = 60;
-const MAX_ENTRY_DURATION_SEC = 30;
 
 const STATE_COLORS: Record<string, { bg: string; text: string }> = {
   focused: { bg: "bg-green-500/15", text: "text-green-400" },
@@ -52,17 +50,6 @@ const NOTIF_ACTION_LABELS: Record<NotificationAction, string> = {
 
 const FALLBACK_COLOR = { bg: "bg-gray-500/15", text: "text-gray-500" };
 
-/** State → total seconds within a segment */
-type StateBreakdown = Record<string, number>;
-
-interface Segment {
-  state: string;
-  startTime: Date;
-  endTime: Date;
-  durationMin: number;
-  breakdown: StateBreakdown;
-}
-
 function formatTime(date: Date): string {
   return date.toLocaleTimeString("ja-JP", {
     hour: "2-digit",
@@ -71,126 +58,17 @@ function formatTime(date: Date): string {
 }
 
 function formatDuration(minutes: number): string {
-  if (minutes < 60) return `${minutes}分`;
-  const h = Math.floor(minutes / 60);
-  const m = minutes % 60;
-  return m > 0 ? `${h}時間${m}分` : `${h}時間`;
+  const m = Math.round(minutes);
+  if (m < 60) return `${m}分`;
+  const h = Math.floor(m / 60);
+  const remainder = m % 60;
+  return remainder > 0 ? `${h}時間${remainder}分` : `${h}時間`;
 }
 
 function formatSeconds(sec: number): string {
   if (sec < 60) return `${Math.round(sec)}秒`;
   const m = Math.round(sec / 60);
   return `${m}分`;
-}
-
-/** Merge two breakdowns by summing durations per state */
-function mergeBreakdowns(a: StateBreakdown, b: StateBreakdown): StateBreakdown {
-  const result = { ...a };
-  for (const [state, dur] of Object.entries(b)) {
-    result[state] = (result[state] ?? 0) + dur;
-  }
-  return result;
-}
-
-/**
- * Bucket history entries into 5-minute windows, pick the dominant state
- * per window (majority vote by duration), then merge consecutive
- * same-state buckets. Buckets with no data produce no segment (gap).
- * Each segment carries a breakdown of actual seconds per state.
- */
-function buildSegments(history: HistoryEntry[]): Segment[] {
-  if (history.length === 0) return [];
-
-  const sorted = [...history].sort((a, b) => a.timestamp - b.timestamp);
-
-  // Step 1: Assign each entry to a 5-min bucket, weighted by duration
-  const buckets = new Map<number, Map<string, number>>();
-
-  for (let i = 0; i < sorted.length; i++) {
-    const entry = sorted[i];
-    const entryDate = new Date(entry.timestamp * 1000);
-
-    const bucketMinute =
-      Math.floor(entryDate.getMinutes() / BUCKET_MINUTES) * BUCKET_MINUTES;
-    const bucketStart = new Date(entryDate);
-    bucketStart.setMinutes(bucketMinute, 0, 0);
-    const bucketKey = Math.floor(bucketStart.getTime() / 1000);
-
-    const nextTs =
-      i + 1 < sorted.length ? sorted[i + 1].timestamp : entry.timestamp + 5;
-    const duration = Math.min(
-      nextTs - entry.timestamp,
-      MAX_ENTRY_DURATION_SEC
-    );
-
-    if (!buckets.has(bucketKey)) {
-      buckets.set(bucketKey, new Map());
-    }
-    const stateMap = buckets.get(bucketKey)!;
-    stateMap.set(
-      entry.integrated_state,
-      (stateMap.get(entry.integrated_state) ?? 0) + duration
-    );
-  }
-
-  // Step 2: Pick dominant state per bucket, keep full breakdown
-  const bucketResults: {
-    bucketStart: number;
-    state: string;
-    breakdown: StateBreakdown;
-  }[] = [];
-  for (const [bucketStart, stateMap] of [...buckets.entries()].sort(
-    (a, b) => a[0] - b[0]
-  )) {
-    let maxState = "";
-    let maxDuration = 0;
-    const breakdown: StateBreakdown = {};
-    for (const [state, dur] of stateMap) {
-      breakdown[state] = dur;
-      if (dur > maxDuration) {
-        maxState = state;
-        maxDuration = dur;
-      }
-    }
-    bucketResults.push({ bucketStart, state: maxState, breakdown });
-  }
-
-  // Step 3: Merge consecutive same-state buckets
-  const segments: Segment[] = [];
-  for (const bucket of bucketResults) {
-    const startTime = new Date(bucket.bucketStart * 1000);
-    const endTime = new Date(
-      (bucket.bucketStart + BUCKET_MINUTES * 60) * 1000
-    );
-
-    if (segments.length > 0) {
-      const last = segments[segments.length - 1];
-      if (
-        last.state === bucket.state &&
-        Math.abs(last.endTime.getTime() - startTime.getTime()) < 1000
-      ) {
-        segments[segments.length - 1] = {
-          ...last,
-          endTime,
-          durationMin: Math.round(
-            (endTime.getTime() - last.startTime.getTime()) / 60000
-          ),
-          breakdown: mergeBreakdowns(last.breakdown, bucket.breakdown),
-        };
-        continue;
-      }
-    }
-
-    segments.push({
-      state: bucket.state,
-      startTime,
-      endTime,
-      durationMin: BUCKET_MINUTES,
-      breakdown: { ...bucket.breakdown },
-    });
-  }
-
-  return segments;
 }
 
 /** Floating tooltip for segment hover, positioned at mouse cursor */
@@ -200,12 +78,14 @@ function SegmentTooltip({
   mouseY,
   containerRect,
 }: {
-  segment: Segment;
+  segment: BucketedSegment;
   mouseX: number;
   mouseY: number;
   containerRect: DOMRect;
 }) {
   const colors = STATE_COLORS[segment.state] ?? FALLBACK_COLOR;
+  const startTime = new Date(segment.start_time * 1000);
+  const endTime = new Date(segment.end_time * 1000);
 
   const entries = Object.entries(segment.breakdown).sort(
     (a, b) => b[1] - a[1]
@@ -232,7 +112,7 @@ function SegmentTooltip({
             {STATE_LABELS[segment.state] ?? segment.state}
           </span>
           <span className="text-[10px] text-gray-500">
-            {formatTime(segment.startTime)} - {formatTime(segment.endTime)}
+            {formatTime(startTime)} - {formatTime(endTime)}
           </span>
         </div>
 
@@ -272,7 +152,7 @@ function SegmentTooltip({
 }
 
 export function TimelineChart({
-  history,
+  segments,
   notifications = [],
   startHour = 0,
   endHour = 24,
@@ -285,7 +165,7 @@ export function TimelineChart({
   );
   const containerRef = useRef<HTMLDivElement>(null);
   const [hoveredSeg, setHoveredSeg] = useState<{
-    segment: Segment;
+    segment: BucketedSegment;
     mouseX: number;
     mouseY: number;
   } | null>(null);
@@ -297,15 +177,13 @@ export function TimelineChart({
     return Math.max(0, Math.min(100, (minutes / totalMinutes) * 100));
   }
 
-  const segments = buildSegments(history);
-
   const notifsByTime = notifications.map((n) => ({
     ...n,
     position: getPositionPct(n.timestamp),
     time: new Date(n.timestamp * 1000),
   }));
 
-  function handleMouseMove(seg: Segment, e: React.MouseEvent<HTMLDivElement>) {
+  function handleMouseMove(seg: BucketedSegment, e: React.MouseEvent<HTMLDivElement>) {
     setHoveredSeg({ segment: seg, mouseX: e.clientX, mouseY: e.clientY });
   }
 
@@ -350,20 +228,18 @@ export function TimelineChart({
 
         {/* State blocks — height proportional to duration */}
         {segments.map((seg) => {
-          const topPct = getPositionPct(
-            Math.floor(seg.startTime.getTime() / 1000)
-          );
-          const bottomPct = getPositionPct(
-            Math.floor(seg.endTime.getTime() / 1000)
-          );
+          const topPct = getPositionPct(seg.start_time);
+          const bottomPct = getPositionPct(seg.end_time);
           const heightPct = bottomPct - topPct;
           const heightPx = (heightPct / 100) * barHeight;
           const borderColor = STATE_BORDER_COLORS[seg.state] ?? "#6b7280";
           const colors = STATE_COLORS[seg.state] ?? FALLBACK_COLOR;
+          const startTime = new Date(seg.start_time * 1000);
+          const endTime = new Date(seg.end_time * 1000);
 
           return (
             <div
-              key={`${seg.state}-${seg.startTime.getTime()}`}
+              key={`${seg.state}-${seg.start_time}`}
               className={`absolute left-0 right-0 rounded-md overflow-hidden ${colors.bg} cursor-pointer transition-opacity hover:opacity-100 opacity-80`}
               style={{
                 top: `${topPct}%`,
@@ -381,11 +257,11 @@ export function TimelineChart({
                     {STATE_LABELS[seg.state] ?? seg.state}
                   </span>
                   <span className="text-[10px] text-gray-500 whitespace-nowrap">
-                    {formatTime(seg.startTime)}-{formatTime(seg.endTime)}
+                    {formatTime(startTime)}-{formatTime(endTime)}
                   </span>
                   {heightPx >= 28 && (
                     <span className="text-[10px] text-gray-600 ml-auto whitespace-nowrap">
-                      {formatDuration(seg.durationMin)}
+                      {formatDuration(seg.duration_min)}
                     </span>
                   )}
                 </div>

@@ -1,6 +1,7 @@
 import type {
   EngineState,
   HistoryEntry,
+  BucketedSegment,
   DailyStats,
   Settings,
   NotificationEntry,
@@ -59,6 +60,17 @@ export const api = {
       `/api/history${params}`
     );
     return res.state_log ?? [];
+  },
+
+  // Bucketed history (API returns pre-aggregated segments)
+  getHistoryBucketed: async (range: {
+    start: number;
+    end: number;
+  }): Promise<BucketedSegment[]> => {
+    const res = await request<{ segments: BucketedSegment[] }>(
+      `/api/history/bucketed?start=${range.start}&end=${range.end}`
+    );
+    return res.segments ?? [];
   },
 
   // Daily stats (accepts YYYY-MM-DD date string)
