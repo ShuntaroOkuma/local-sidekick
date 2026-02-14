@@ -3,6 +3,14 @@ import { api } from "../lib/api";
 import { useSettings } from "../hooks/useSettings";
 import type { DailyStats, DailyReport } from "../lib/types";
 
+// ローカル日付をYYYY-MM-DD形式で取得するヘルパー
+function toLocalDateString(date: Date): string {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
 export function Report() {
   const { settings } = useSettings();
   const [stats, setStats] = useState<DailyStats | null>(null);
@@ -12,24 +20,26 @@ export function Report() {
   const [error, setError] = useState<string | null>(null);
 
   const [selectedDate, setSelectedDate] = useState<string>(() => {
-    const d = new Date();
-    return d.toISOString().split("T")[0];
+    return toLocalDateString(new Date());
   });
+  // reportDates is fetched for future calendar/date picker UI
   const [reportDates, setReportDates] = useState<string[]>([]);
 
-  const todayStr = new Date().toISOString().split("T")[0];
+  const todayStr = toLocalDateString(new Date());
   const isToday = selectedDate === todayStr;
 
   const navigateDate = (delta: number) => {
     const current = new Date(selectedDate + "T00:00:00");
     current.setDate(current.getDate() + delta);
-    const next = current.toISOString().split("T")[0];
+    const next = toLocalDateString(current);
     if (next > todayStr) return;
     setSelectedDate(next);
   };
 
   useEffect(() => {
-    api.listReports().then(setReportDates).catch(() => {});
+    api.listReports().then(setReportDates).catch((err) => {
+      console.error("Failed to fetch report dates:", err);
+    });
   }, []);
 
   useEffect(() => {
@@ -49,8 +59,12 @@ export function Report() {
           try {
             const data = await api.getReport(selectedDate);
             setReport(data);
-          } catch {
-            // 404 = no report for this date
+          } catch (err) {
+            // 404 (レポート無し) は無視、それ以外は外側catchに伝播
+            const message = err instanceof Error ? err.message : "";
+            if (!message.includes("404")) {
+              throw err;
+            }
           }
         }
       } catch (err) {
