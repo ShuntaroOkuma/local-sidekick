@@ -88,6 +88,11 @@ export interface ElectronAPI {
   setAvatarEnabled: (enabled: boolean) => Promise<void>;
 }
 
+export interface TimeRange {
+  start: number;
+  end: number;
+}
+
 export interface BucketedSegment {
   state: string;
   start_time: number;

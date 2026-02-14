@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useMemo } from "react";
 import type {
   BucketedSegment,
   NotificationEntry,
@@ -177,6 +177,17 @@ export function TimelineChart({
     return Math.max(0, Math.min(100, (minutes / totalMinutes) * 100));
   }
 
+  // Pre-compute Date objects for segments to avoid re-creating them on hover re-renders
+  const segmentsWithDates = useMemo(
+    () =>
+      segments.map((seg) => ({
+        ...seg,
+        startDate: new Date(seg.start_time * 1000),
+        endDate: new Date(seg.end_time * 1000),
+      })),
+    [segments]
+  );
+
   const notifsByTime = notifications.map((n) => ({
     ...n,
     position: getPositionPct(n.timestamp),
@@ -227,15 +238,13 @@ export function TimelineChart({
         ))}
 
         {/* State blocks — height proportional to duration */}
-        {segments.map((seg) => {
+        {segmentsWithDates.map((seg) => {
           const topPct = getPositionPct(seg.start_time);
           const bottomPct = getPositionPct(seg.end_time);
           const heightPct = bottomPct - topPct;
           const heightPx = (heightPct / 100) * barHeight;
           const borderColor = STATE_BORDER_COLORS[seg.state] ?? "#6b7280";
           const colors = STATE_COLORS[seg.state] ?? FALLBACK_COLOR;
-          const startTime = new Date(seg.start_time * 1000);
-          const endTime = new Date(seg.end_time * 1000);
 
           return (
             <div
@@ -257,7 +266,7 @@ export function TimelineChart({
                     {STATE_LABELS[seg.state] ?? seg.state}
                   </span>
                   <span className="text-[10px] text-gray-500 whitespace-nowrap">
-                    {formatTime(startTime)}-{formatTime(endTime)}
+                    {formatTime(seg.startDate)}-{formatTime(seg.endDate)}
                   </span>
                   {heightPx >= 28 && (
                     <span className="text-[10px] text-gray-600 ml-auto whitespace-nowrap">

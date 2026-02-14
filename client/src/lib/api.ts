@@ -2,6 +2,7 @@ import type {
   EngineState,
   HistoryEntry,
   BucketedSegment,
+  TimeRange,
   DailyStats,
   Settings,
   NotificationEntry,
@@ -49,10 +50,7 @@ export const api = {
   getState: (): Promise<EngineState> => request("/api/state"),
 
   // History (API accepts start/end as Unix timestamps)
-  getHistory: async (range?: {
-    start: number;
-    end: number;
-  }): Promise<HistoryEntry[]> => {
+  getHistory: async (range?: TimeRange): Promise<HistoryEntry[]> => {
     const params = range
       ? `?start=${range.start}&end=${range.end}`
       : "";
@@ -63,10 +61,7 @@ export const api = {
   },
 
   // Bucketed history (API returns pre-aggregated segments)
-  getHistoryBucketed: async (range: {
-    start: number;
-    end: number;
-  }): Promise<BucketedSegment[]> => {
+  getHistoryBucketed: async (range: TimeRange): Promise<BucketedSegment[]> => {
     const res = await request<{ segments: BucketedSegment[] }>(
       `/api/history/bucketed?start=${range.start}&end=${range.end}`
     );
@@ -80,10 +75,7 @@ export const api = {
   },
 
   // Notifications (API accepts start/end as Unix timestamps)
-  getNotifications: async (range?: {
-    start: number;
-    end: number;
-  }): Promise<NotificationEntry[]> => {
+  getNotifications: async (range?: TimeRange): Promise<NotificationEntry[]> => {
     const params = range
       ? `?start=${range.start}&end=${range.end}`
       : "";
