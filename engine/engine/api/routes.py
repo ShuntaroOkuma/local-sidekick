@@ -191,7 +191,6 @@ async def get_history_bucketed(
         raise HTTPException(status_code=503, detail="History store not available")
 
     logs = await store.get_state_log(start_time=start, end_time=end, limit=100000)
-    logs.sort(key=lambda x: x["timestamp"])
     segments = build_bucketed_segments(logs, bucket_minutes=bucket_minutes)
     return {"segments": segments, "count": len(segments)}
 

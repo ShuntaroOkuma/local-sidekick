@@ -193,14 +193,15 @@ def build_bucketed_segments(
         ts = log["timestamp"]
         state = log["integrated_state"]
 
-        # Duration: time until next entry, capped at max_entry_duration
+        # Duration: time until next entry, capped at max_entry_duration.
+        # Last entry gets a single poll interval (5s) to match frontend behavior.
         if i + 1 < len(sorted_logs):
             duration = min(
                 sorted_logs[i + 1]["timestamp"] - ts,
                 max_entry_duration,
             )
         else:
-            duration = max_entry_duration
+            duration = 5.0
 
         bucket_key = (ts // bucket_size) * bucket_size
 
@@ -212,7 +213,7 @@ def build_bucketed_segments(
     bucket_results: list[tuple[float, str, dict[str, float]]] = []
     for bucket_key in sorted(buckets):
         state_durations = buckets[bucket_key]
-        dominant_state = max(state_durations, key=state_durations.get)  # type: ignore[arg-type]
+        dominant_state = max(state_durations, key=lambda s: state_durations[s])
         bucket_results.append((bucket_key, dominant_state, dict(state_durations)))
 
     # Step 3: Merge consecutive same-state buckets into segments

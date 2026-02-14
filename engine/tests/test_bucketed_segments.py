@@ -118,12 +118,12 @@ class TestBreakdown:
             _make_log(BASE_TS + 0, "focused"),    # duration=10s
             _make_log(BASE_TS + 10, "distracted"),  # duration=10s
             _make_log(BASE_TS + 20, "focused"),    # duration=10s
-            _make_log(BASE_TS + 30, "focused"),    # duration=30s (last entry, capped)
+            _make_log(BASE_TS + 30, "focused"),    # duration=5s (last entry)
         ]
         result = build_bucketed_segments(logs)
         assert len(result) == 1
         bd = result[0]["breakdown"]
-        assert bd["focused"] == pytest.approx(50.0)  # 10 + 10 + 30
+        assert bd["focused"] == pytest.approx(25.0)  # 10 + 10 + 5
         assert bd["distracted"] == pytest.approx(10.0)
 
 
@@ -132,13 +132,13 @@ class TestParameters:
         """Entries with gap > 30s should be capped at max_entry_duration."""
         logs = [
             _make_log(BASE_TS + 0, "focused"),    # gap to next = 120s, capped at 30s
-            _make_log(BASE_TS + 120, "focused"),   # last entry = 30s
+            _make_log(BASE_TS + 120, "focused"),   # last entry = 5s
         ]
         result = build_bucketed_segments(logs)
         # Both entries in same bucket (BASE_TS)
         assert len(result) == 1
         total = sum(result[0]["breakdown"].values())
-        assert total == pytest.approx(60.0)  # 30 + 30
+        assert total == pytest.approx(35.0)  # 30 + 5
 
     def test_custom_bucket_minutes(self):
         """bucket_minutes=10 should use 10-minute buckets."""
