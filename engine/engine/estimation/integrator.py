@@ -23,6 +23,7 @@ class IntegratedState:
     camera_state: Optional[str]
     pc_state: Optional[str]
     reasoning: str
+    source: str  # "rule" or "llm"
     timestamp: float
 
     def to_dict(self) -> dict:
@@ -33,6 +34,7 @@ class IntegratedState:
             "camera_state": self.camera_state,
             "pc_state": self.pc_state,
             "reasoning": self.reasoning,
+            "source": self.source,
             "timestamp": self.timestamp,
         }
 
@@ -59,5 +61,6 @@ def build_integrated_state(
         camera_state=None,
         pc_state=None,
         reasoning=result.reasoning,
+        source=result.source,
         timestamp=time.time(),
     )
