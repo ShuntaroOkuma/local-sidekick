@@ -68,10 +68,10 @@ class SettingsResponse(BaseModel):
     drowsy_cooldown_minutes: int
     distracted_cooldown_minutes: int
     over_focus_cooldown_minutes: int
-    drowsy_trigger_seconds: int
-    distracted_trigger_seconds: int
-    over_focus_window_minutes: int
-    over_focus_threshold_minutes: int
+    drowsy_trigger_buckets: int
+    distracted_trigger_buckets: int
+    over_focus_window_buckets: int
+    over_focus_threshold_buckets: int
     cloud_run_url: str = ""
     cloud_auth_email: str = ""
 
@@ -85,10 +85,10 @@ class SettingsUpdate(BaseModel):
     drowsy_cooldown_minutes: Optional[int] = None
     distracted_cooldown_minutes: Optional[int] = None
     over_focus_cooldown_minutes: Optional[int] = None
-    drowsy_trigger_seconds: Optional[int] = None
-    distracted_trigger_seconds: Optional[int] = None
-    over_focus_window_minutes: Optional[int] = None
-    over_focus_threshold_minutes: Optional[int] = None
+    drowsy_trigger_buckets: Optional[int] = None
+    distracted_trigger_buckets: Optional[int] = None
+    over_focus_window_buckets: Optional[int] = None
+    over_focus_threshold_buckets: Optional[int] = None
     cloud_run_url: Optional[str] = None
 
 
@@ -264,10 +264,10 @@ def _config_to_response(config: EngineConfig) -> SettingsResponse:
         drowsy_cooldown_minutes=config.drowsy_cooldown_minutes,
         distracted_cooldown_minutes=config.distracted_cooldown_minutes,
         over_focus_cooldown_minutes=config.over_focus_cooldown_minutes,
-        drowsy_trigger_seconds=config.drowsy_trigger_seconds,
-        distracted_trigger_seconds=config.distracted_trigger_seconds,
-        over_focus_window_minutes=config.over_focus_window_minutes,
-        over_focus_threshold_minutes=config.over_focus_threshold_minutes,
+        drowsy_trigger_buckets=config.drowsy_trigger_buckets,
+        distracted_trigger_buckets=config.distracted_trigger_buckets,
+        over_focus_window_buckets=config.over_focus_window_buckets,
+        over_focus_threshold_buckets=config.over_focus_threshold_buckets,
         cloud_run_url=config.cloud_run_url,
         cloud_auth_email=config.cloud_auth_email,
     )
