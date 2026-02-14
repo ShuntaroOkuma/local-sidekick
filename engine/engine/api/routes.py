@@ -11,6 +11,8 @@ Endpoints:
     POST /api/engine/stop     -> Stop monitoring
     POST /api/engine/pause    -> Pause monitoring (system sleep)
     POST /api/engine/resume   -> Resume monitoring (system wake)
+    GET  /api/reports          -> List available report dates
+    GET  /api/reports/{date}   -> Get a specific past report
     POST /api/cloud/login     -> Login to Cloud Run
     POST /api/cloud/register  -> Register on Cloud Run
     POST /api/cloud/logout    -> Clear cloud auth
@@ -28,7 +30,9 @@ from pydantic import BaseModel
 
 from engine.api.cloud_client import (
     cloud_generate_report,
+    cloud_get_report,
     cloud_health_check,
+    cloud_list_reports,
     cloud_login,
     cloud_register,
 )
@@ -313,6 +317,35 @@ async def respond_to_notification(
     action = body.get("action", "dismissed")
     await store.update_notification_action(notification_id, action)
     return {"status": "ok", "action": action}
+
+
+# --- Report list/get endpoints ---
+
+
+@router.get("/reports")
+async def list_reports() -> dict:
+    """List available report dates. Returns empty list if sync is disabled."""
+    config = load_config()
+    if not (config.sync_enabled and config.cloud_run_url and config.cloud_auth_token):
+        return {"dates": []}
+
+    dates = await cloud_list_reports(config.cloud_run_url, config.cloud_auth_token)
+    if dates is None:
+        return {"dates": []}
+    return {"dates": dates}
+
+
+@router.get("/reports/{date}")
+async def get_report(date: str) -> dict:
+    """Get a specific past report. Returns 503 if sync is disabled."""
+    config = load_config()
+    if not (config.sync_enabled and config.cloud_run_url and config.cloud_auth_token):
+        raise HTTPException(status_code=503, detail="Cloud sync is not enabled")
+
+    report = await cloud_get_report(config.cloud_run_url, config.cloud_auth_token, date)
+    if report is None:
+        raise HTTPException(status_code=404, detail=f"No report found for date: {date}")
+    return report
 
 
 # --- Report proxy endpoint ---
