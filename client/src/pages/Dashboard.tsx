@@ -2,24 +2,18 @@ import { useState, useEffect } from "react";
 import { useEngineState } from "../hooks/useEngineState";
 import { StateIndicator } from "../components/StateIndicator";
 import { StatsSummary } from "../components/StatsSummary";
-import { NotificationCard } from "../components/NotificationCard";
 import { api } from "../lib/api";
-import type { DailyStats, NotificationEntry } from "../lib/types";
+import type { DailyStats } from "../lib/types";
 
 export function Dashboard() {
   const { state, connected } = useEngineState();
   const [stats, setStats] = useState<DailyStats | null>(null);
-  const [notifications, setNotifications] = useState<NotificationEntry[]>([]);
 
   useEffect(() => {
     async function fetchData() {
       try {
-        const [statsData, notifsData] = await Promise.all([
-          api.getDailyStats(),
-          api.getNotifications(),
-        ]);
+        const statsData = await api.getDailyStats();
         setStats(statsData);
-        setNotifications(notifsData);
       } catch (err) {
         console.error("Failed to fetch dashboard data:", err);
       }
@@ -86,19 +80,6 @@ export function Dashboard() {
         <StatsSummary stats={stats} />
       </div>
 
-      {/* Recent notifications */}
-      {notifications.length > 0 && (
-        <div>
-          <h2 className="text-sm font-semibold text-gray-400 mb-3">
-            最近の通知
-          </h2>
-          <div className="space-y-2">
-            {notifications.slice(0, 5).map((notif) => (
-              <NotificationCard key={notif.id} notification={notif} />
-            ))}
-          </div>
-        </div>
-      )}
     </div>
   );
 }
