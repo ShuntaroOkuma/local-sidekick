@@ -51,14 +51,14 @@ def get_text_model(backend: str = "llama_cpp", tier: str = "lightweight") -> str
 class EngineConfig:
     """Engine configuration with defaults."""
 
-    # Notification settings
+    # Notification settings (bucket-based)
     drowsy_cooldown_minutes: int = 15
     distracted_cooldown_minutes: int = 20
     over_focus_cooldown_minutes: int = 30
-    drowsy_trigger_seconds: int = 10
-    distracted_trigger_seconds: int = 120
-    over_focus_window_minutes: int = 90
-    over_focus_threshold_minutes: int = 80
+    drowsy_trigger_buckets: int = 2
+    distracted_trigger_buckets: int = 2
+    over_focus_window_buckets: int = 18
+    over_focus_threshold_buckets: int = 16
 
     # Camera settings
     camera_enabled: bool = True

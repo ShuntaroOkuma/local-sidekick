@@ -1,16 +1,17 @@
 """Notification engine for drowsy/distracted/over-focus alerts.
 
-Implements three notification types with cooldown:
-- drowsy: continuous drowsy state for 120s, cooldown 15min
-- distracted: continuous distracted state for 120s, cooldown 20min
-- over_focus: 80+ minutes focused in last 90 minutes, cooldown 30min
+Uses 5-minute bucketed segments (from build_bucketed_segments) to evaluate
+notification conditions. Stateless except for cooldown timers.
+
+Notification types:
+- drowsy: last N consecutive buckets are all drowsy, cooldown 15min
+- distracted: last N consecutive buckets are all distracted, cooldown 20min
+- over_focus: M out of last N buckets are focused, cooldown 30min
 """
 
 from __future__ import annotations
 
 import logging
-import time
-from collections import deque
 from dataclasses import dataclass
 from typing import Optional
 
@@ -36,46 +37,42 @@ _MESSAGES = {
 
 
 class NotificationEngine:
-    """Evaluates state history and triggers notifications with cooldown.
+    """Evaluates bucketed segments and triggers notifications with cooldown.
 
     Args:
-        drowsy_trigger_seconds: Consecutive drowsy seconds to trigger notification.
-        distracted_trigger_seconds: Consecutive distracted seconds to trigger.
-        over_focus_window_minutes: Window to check focused time.
-        over_focus_threshold_minutes: Focused minutes in window to trigger.
+        drowsy_trigger_buckets: Consecutive drowsy buckets to trigger notification.
+        distracted_trigger_buckets: Consecutive distracted buckets to trigger.
+        over_focus_window_buckets: Number of recent buckets to check for over_focus.
+        over_focus_threshold_buckets: Focused buckets in window to trigger over_focus.
         drowsy_cooldown_minutes: Cooldown after drowsy notification.
         distracted_cooldown_minutes: Cooldown after distracted notification.
         over_focus_cooldown_minutes: Cooldown after over_focus notification.
     """
 
+    _BUCKET_SIZE_MINUTES = 5.0
+
     def __init__(
         self,
-        drowsy_trigger_seconds: int = 120,
-        distracted_trigger_seconds: int = 120,
-        over_focus_window_minutes: int = 90,
-        over_focus_threshold_minutes: int = 80,
+        drowsy_trigger_buckets: int = 2,
+        distracted_trigger_buckets: int = 2,
+        over_focus_window_buckets: int = 18,
+        over_focus_threshold_buckets: int = 16,
         drowsy_cooldown_minutes: int = 15,
         distracted_cooldown_minutes: int = 20,
         over_focus_cooldown_minutes: int = 30,
     ) -> None:
-        self._drowsy_trigger = drowsy_trigger_seconds
-        self._distracted_trigger = distracted_trigger_seconds
-        self._over_focus_window = over_focus_window_minutes * 60  # seconds
-        self._over_focus_threshold = over_focus_threshold_minutes * 60  # seconds
+        self._drowsy_trigger_buckets = drowsy_trigger_buckets
+        self._distracted_trigger_buckets = distracted_trigger_buckets
+        self._over_focus_window_buckets = over_focus_window_buckets
+        self._over_focus_threshold_buckets = over_focus_threshold_buckets
         self._cooldowns = {
             "drowsy": drowsy_cooldown_minutes * 60,
             "distracted": distracted_cooldown_minutes * 60,
             "over_focus": over_focus_cooldown_minutes * 60,
         }
 
-        # State tracking
-        self._consecutive_state: Optional[str] = None
-        self._consecutive_start: float = 0.0
+        # Only mutable state: cooldown timers
         self._last_notification_time: dict[str, float] = {}
-
-        # History of states for over_focus calculation
-        # Stores (timestamp, state, duration_seconds)
-        self._state_history: deque[tuple[float, str, float]] = deque()
 
         # All notifications triggered
         self.notifications: list[Notification] = []
@@ -102,85 +99,62 @@ class NotificationEngine:
         logger.info("Notification triggered: %s", notification_type)
         return notification
 
-    def _check_over_focus(self, now: float) -> Optional[Notification]:
-        """Check if focused time in the window exceeds the threshold."""
-        if not self._can_notify("over_focus", now):
-            return None
-
-        window_start = now - self._over_focus_window
-        focused_seconds = 0.0
-
-        for ts, state, duration in self._state_history:
-            if ts < window_start:
-                continue
-            if state == "focused":
-                focused_seconds += duration
-
-        if focused_seconds >= self._over_focus_threshold:
-            return self._trigger("over_focus", now)
-
-        return None
-
-    def evaluate(
+    def check_buckets(
         self,
-        state: str,
-        timestamp: float,
-        interval_seconds: float = 5.0,
+        segments: list[dict],
+        now: float,
     ) -> Optional[Notification]:
-        """Evaluate the current state and return a notification if triggered.
+        """Evaluate bucketed segments and return a notification if triggered.
 
-        Should be called at each integration interval with the current state.
+        Segments are the output of build_bucketed_segments(), already merged.
+        We un-merge them back to per-bucket states to count consecutive/threshold.
 
         Args:
-            state: Current integrated state (focused/drowsy/distracted/away).
-            timestamp: Current timestamp.
-            interval_seconds: Time since last evaluation.
+            segments: Output of build_bucketed_segments().
+            now: Current timestamp for cooldown checks.
 
         Returns:
             A Notification if one was triggered, or None.
         """
-        now = timestamp
+        if not segments:
+            return None
 
-        # Record state for over_focus tracking
-        self._state_history.append((now, state, interval_seconds))
+        # Expand merged segments back to individual 5-min bucket states.
+        # Each segment spans duration_min minutes = duration_min/5 buckets.
+        bucket_states: list[str] = []
+        for seg in segments:
+            n_buckets = max(1, round(seg["duration_min"] / self._BUCKET_SIZE_MINUTES))
+            bucket_states.extend([seg["state"]] * n_buckets)
 
-        # Prune old entries (keep 2x the over_focus window)
-        cutoff = now - self._over_focus_window * 2
-        while self._state_history and self._state_history[0][0] < cutoff:
-            self._state_history.popleft()
+        if not bucket_states:
+            return None
 
-        # Track consecutive state
-        if state != self._consecutive_state:
-            self._consecutive_state = state
-            self._consecutive_start = now
+        # Check drowsy: last N buckets all drowsy
+        if len(bucket_states) >= self._drowsy_trigger_buckets:
+            tail = bucket_states[-self._drowsy_trigger_buckets:]
+            if all(s == "drowsy" for s in tail):
+                if self._can_notify("drowsy", now):
+                    return self._trigger("drowsy", now)
 
-        consecutive_seconds = now - self._consecutive_start
+        # Check distracted: last N buckets all distracted
+        if len(bucket_states) >= self._distracted_trigger_buckets:
+            tail = bucket_states[-self._distracted_trigger_buckets:]
+            if all(s == "distracted" for s in tail):
+                if self._can_notify("distracted", now):
+                    return self._trigger("distracted", now)
 
-        # Check drowsy
-        if state == "drowsy" and consecutive_seconds >= self._drowsy_trigger:
-            if self._can_notify("drowsy", now):
-                return self._trigger("drowsy", now)
-
-        # Check distracted
-        if state == "distracted" and consecutive_seconds >= self._distracted_trigger:
-            if self._can_notify("distracted", now):
-                return self._trigger("distracted", now)
-
-        # Check over_focus
-        over_focus = self._check_over_focus(now)
-        if over_focus is not None:
-            return over_focus
+        # Check over_focus: M out of last N buckets focused
+        window = bucket_states[-self._over_focus_window_buckets:]
+        focused_count = sum(1 for s in window if s == "focused")
+        if focused_count >= self._over_focus_threshold_buckets:
+            if self._can_notify("over_focus", now):
+                return self._trigger("over_focus", now)
 
         return None
 
-    def reset_consecutive(self) -> None:
-        """Reset consecutive state tracking (e.g. after system resume).
-
-        Prevents sleep/pause duration from counting toward
-        distracted or drowsy notification thresholds.
-        """
-        self._consecutive_state = None
-        self._consecutive_start = 0.0
+    def reset(self) -> None:
+        """Reset cooldown timers (e.g. after system resume)."""
+        self._last_notification_time.clear()
 
     def record_user_action(
         self,
