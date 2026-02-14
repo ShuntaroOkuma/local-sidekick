@@ -365,13 +365,23 @@ async def _notification_loop() -> None:
     _notification_engine = _create_notification_engine(_config)
 
     while _should_monitor:
-        await asyncio.sleep(300)  # 5 minutes
+        # Sleep in 10s increments so we respond to stop/pause promptly
+        for _ in range(30):  # 30 * 10s = 5 minutes
+            if not _should_monitor:
+                return
+            await asyncio.sleep(10)
 
         if _paused:
             continue
 
         now = time.time()
-        window_start = now - 90 * 60  # last 90 minutes
+        # Derive window from config to stay in sync with over_focus_window_buckets
+        window_minutes = max(
+            _config.over_focus_window_buckets * 5,
+            _config.drowsy_trigger_buckets * 5,
+            _config.distracted_trigger_buckets * 5,
+        )
+        window_start = now - window_minutes * 60
 
         try:
             logs = await _history_store.get_state_log(
@@ -408,9 +418,11 @@ async def apply_config(new_config: EngineConfig) -> None:
     _config = new_config
     # Reset LLM load failure flag so tier change can trigger a new load attempt
     _llm_load_failed = False
-    # Recreate notification engine with updated settings
+    # Recreate notification engine with updated settings, preserving cooldown state
     if _notification_engine is not None:
+        old_cooldowns = _notification_engine._last_notification_time.copy()
         _notification_engine = _create_notification_engine(_config)
+        _notification_engine._last_notification_time = old_cooldowns
     logger.info("Applied updated config to running engine.")
 
 

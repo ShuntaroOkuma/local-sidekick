@@ -77,15 +77,15 @@ class TestDistracted:
 
 class TestOverFocus:
     def test_over_focus_triggers(self):
-        """16 out of 18 buckets focused -> over_focus fires."""
+        """17 out of 18 buckets focused (above threshold) -> over_focus fires."""
         engine = NotificationEngine(
             over_focus_window_buckets=18,
             over_focus_threshold_buckets=16,
         )
         # Use "away" for non-focused buckets to avoid triggering drowsy/distracted
         segments = [
-            _make_segment("focused", 80.0, 0),  # 16 buckets
-            _make_segment("away", 10.0, 4800),   # 2 buckets
+            _make_segment("focused", 85.0, 0),  # 17 buckets
+            _make_segment("away", 5.0, 5100),    # 1 bucket
         ]
         result = engine.check_buckets(segments, NOW)
         assert result is not None
