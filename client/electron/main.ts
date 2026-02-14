@@ -80,6 +80,8 @@ function startStatePolling(): void {
   if (statePollingTimeout) return;
 
   const port = pythonBridge?.getPort() ?? 18080;
+  // Track notification IDs already shown to avoid duplicate sounds/popups
+  const shownNotificationIds = new Set<number>();
 
   async function poll(): Promise<void> {
     try {
@@ -100,10 +102,14 @@ function startStatePolling(): void {
         if (notifRes.ok) {
           const notifications = await notifRes.json();
           for (const notif of notifications) {
+            // Skip if already shown in this session
+            if (shownNotificationIds.has(notif.id)) continue;
+            shownNotificationIds.add(notif.id);
+
             // Forward notification to avatar window
             sendToAvatar("avatar-notification", notif);
 
-            // Play Glass notification sound
+            // Play notification sound
             execFile("afplay", ["/System/Library/Sounds/Purr.aiff"]);
 
             showNotification(
