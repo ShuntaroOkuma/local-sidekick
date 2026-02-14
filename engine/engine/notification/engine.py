@@ -49,6 +49,8 @@ class NotificationEngine:
         over_focus_cooldown_minutes: Cooldown after over_focus notification.
     """
 
+    _BUCKET_SIZE_MINUTES = 5.0
+
     def __init__(
         self,
         drowsy_trigger_buckets: int = 2,
@@ -121,7 +123,7 @@ class NotificationEngine:
         # Each segment spans duration_min minutes = duration_min/5 buckets.
         bucket_states: list[str] = []
         for seg in segments:
-            n_buckets = max(1, round(seg["duration_min"] / 5.0))
+            n_buckets = max(1, round(seg["duration_min"] / self._BUCKET_SIZE_MINUTES))
             bucket_states.extend([seg["state"]] * n_buckets)
 
         if not bucket_states:

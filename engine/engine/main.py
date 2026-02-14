@@ -46,6 +46,9 @@ from engine.notification.engine import NotificationEngine
 
 logger = logging.getLogger(__name__)
 
+# Bucket size used for notification scheduling and window calculation
+_BUCKET_SIZE_MINUTES = 5
+
 # --- Global state ---
 
 _monitoring_tasks: list[asyncio.Task] = []
@@ -366,7 +369,7 @@ async def _notification_loop() -> None:
 
     while _should_monitor:
         # Sleep in 10s increments so we respond to stop/pause promptly
-        for _ in range(30):  # 30 * 10s = 5 minutes
+        for _ in range(_BUCKET_SIZE_MINUTES * 6):  # 5min * 6 = 30 iterations * 10s
             if not _should_monitor:
                 return
             await asyncio.sleep(10)
@@ -377,9 +380,9 @@ async def _notification_loop() -> None:
         now = time.time()
         # Derive window from config to stay in sync with over_focus_window_buckets
         window_minutes = max(
-            _config.over_focus_window_buckets * 5,
-            _config.drowsy_trigger_buckets * 5,
-            _config.distracted_trigger_buckets * 5,
+            _config.over_focus_window_buckets * _BUCKET_SIZE_MINUTES,
+            _config.drowsy_trigger_buckets * _BUCKET_SIZE_MINUTES,
+            _config.distracted_trigger_buckets * _BUCKET_SIZE_MINUTES,
         )
         window_start = now - window_minutes * 60
 
