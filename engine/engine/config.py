@@ -55,10 +55,10 @@ class EngineConfig:
     drowsy_cooldown_minutes: int = 15
     distracted_cooldown_minutes: int = 20
     over_focus_cooldown_minutes: int = 30
-    drowsy_trigger_buckets: int = 2
-    distracted_trigger_buckets: int = 2
+    drowsy_trigger_buckets: int = 1
+    distracted_trigger_buckets: int = 1
     over_focus_window_buckets: int = 18
-    over_focus_threshold_buckets: int = 16
+    over_focus_threshold_buckets: int = 18
 
     # Camera settings
     camera_enabled: bool = True
