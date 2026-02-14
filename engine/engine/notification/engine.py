@@ -30,9 +30,9 @@ class Notification:
 
 # Default messages for each notification type
 _MESSAGES = {
-    "drowsy": "Drowsiness detected. Consider taking a short break or stretching.",
-    "distracted": "You seem distracted. Try focusing on one task at a time.",
-    "over_focus": "You have been focused for over 90 minutes. Take a 5-minute break.",
+    "drowsy": "眠気が来ています。90秒立ちましょう",
+    "distracted": "集中が途切れています。10分だけ1タスクに戻りませんか？",
+    "over_focus": "集中しすぎです。5分休憩で効率維持しませんか？",
 }
 
 

@@ -28,7 +28,7 @@ const NOTIFICATION_CONFIGS: Record<NotificationType, NotificationConfig> = {
   },
   over_focus: {
     title: "集中しすぎです",
-    body: "2分休憩で効率維持しませんか？",
+    body: "5分休憩で効率維持しませんか？",
   },
 };
 
