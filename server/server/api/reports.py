@@ -23,6 +23,16 @@ def _get_vertex() -> VertexAIService:
     return _vertex
 
 
+@router.get("/")
+async def list_reports(
+    user: dict = Depends(get_current_user),
+):
+    """List available report dates."""
+    db = get_firestore()
+    dates = await db.list_report_dates(user["user_id"])
+    return {"dates": dates}
+
+
 @router.post("/generate", response_model=DailyReport)
 async def generate_report(
     request: ReportRequest,
