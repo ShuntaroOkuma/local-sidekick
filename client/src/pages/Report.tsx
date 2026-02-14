@@ -55,7 +55,14 @@ export function Report() {
             setReport(data.report);
           }
         } else {
-          setStats(null);
+          // 過去日: ローカル統計を取得してデータ有無を判定
+          try {
+            const statsData = await api.getDailyStats(selectedDate);
+            setStats(statsData);
+          } catch {
+            setStats(null);
+          }
+          // クラウドからレポート取得
           try {
             const data = await api.getReport(selectedDate);
             setReport(data);
@@ -81,7 +88,7 @@ export function Report() {
     setGenerating(true);
     setError(null);
     try {
-      const data = await api.generateReport();
+      const data = await api.generateReport(selectedDate);
       setStats(data);
       if (data.report) {
         setReport(data.report);
@@ -247,6 +254,19 @@ export function Report() {
               <p className="text-sm text-gray-300">{report.tomorrow_tip}</p>
             </div>
           )}
+
+          {/* Regenerate button (today only) */}
+          {isToday && (
+            <div className="flex justify-end">
+              <button
+                onClick={handleGenerate}
+                disabled={generating}
+                className="px-4 py-1.5 text-xs text-gray-500 hover:text-gray-300 hover:bg-gray-800 disabled:text-gray-700 rounded-lg transition-colors"
+              >
+                {generating ? "再生成中..." : "レポートを再生成"}
+              </button>
+            </div>
+          )}
         </div>
       ) : !isToday ? (
         <div className="bg-gray-800/50 rounded-xl p-8 text-center">
@@ -254,8 +274,26 @@ export function Report() {
             <p className="text-gray-400">
               過去のレポートを表示するにはCloud同期を有効にしてください
             </p>
+          ) : stats && (stats.focused_minutes > 0 || stats.distracted_minutes > 0 || stats.drowsy_minutes > 0) ? (
+            <>
+              <p className="text-gray-400 mb-4">
+                この日のレポートはまだ生成されていません
+              </p>
+              <p className="text-xs text-gray-600 mb-4">
+                集中 {Math.round(stats.focused_minutes)}分 /
+                散漫 {Math.round(stats.distracted_minutes)}分 /
+                眠気 {Math.round(stats.drowsy_minutes)}分
+              </p>
+              <button
+                onClick={handleGenerate}
+                disabled={generating}
+                className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:bg-gray-700 disabled:text-gray-500 text-white text-sm font-medium rounded-lg transition-colors"
+              >
+                {generating ? "生成中..." : "レポートを生成"}
+              </button>
+            </>
           ) : (
-            <p className="text-gray-400">この日のレポートはありません</p>
+            <p className="text-gray-400">この日のデータがありません</p>
           )}
         </div>
       ) : (
