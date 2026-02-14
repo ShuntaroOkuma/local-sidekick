@@ -84,6 +84,7 @@ class ReportRequest(BaseModel):
 
 class DailyReport(BaseModel):
     summary: str
+    pattern: str = ""
     highlights: list[str]
     concerns: list[str]
     tomorrow_tip: str
