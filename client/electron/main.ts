@@ -1,4 +1,4 @@
-import { app, BrowserWindow, ipcMain, powerMonitor } from "electron";
+import { app, BrowserWindow, ipcMain, powerMonitor, screen } from "electron";
 import { join } from "path";
 import { readFileSync } from "fs";
 import { execFile } from "child_process";
@@ -276,6 +276,62 @@ app.whenReady().then(async () => {
   powerMonitor.on("resume", () => resumeEngine("System resumed"));
   powerMonitor.on("lock-screen", () => pauseEngine("Screen locked"));
   powerMonitor.on("unlock-screen", () => resumeEngine("Screen unlocked"));
+
+  // --- Display topology change handling (clamshell mode) ---
+  // macOS does NOT fire "suspend" when entering clamshell mode with external
+  // display + power + keyboard connected, so we listen for display events.
+  let displayChangeTimer: ReturnType<typeof setTimeout> | null = null;
+
+  function scheduleDisplayChangeHandler(): void {
+    if (displayChangeTimer) clearTimeout(displayChangeTimer);
+    displayChangeTimer = setTimeout(onDisplayChanged, 1000);
+  }
+
+  screen.on("display-added", scheduleDisplayChangeHandler);
+  screen.on("display-removed", scheduleDisplayChangeHandler);
+  screen.on("display-metrics-changed", (_event, _display, changedMetrics) => {
+    if (
+      changedMetrics.includes("workArea") ||
+      changedMetrics.includes("bounds")
+    ) {
+      scheduleDisplayChangeHandler();
+    }
+  });
+
+  async function onDisplayChanged(): Promise<void> {
+    console.log(
+      "Display topology changed – repositioning avatar & re-initializing camera",
+    );
+
+    // 1. Reposition avatar to bottom-right of new primary display
+    if (avatarWin && !avatarWin.isDestroyed()) {
+      const primary = screen.getPrimaryDisplay();
+      const { width, height } = primary.workAreaSize;
+      avatarWin.setPosition(width - 220, height - 320);
+    }
+
+    // 2. Trigger camera re-init via engine pause → resume.
+    //    Call the API directly instead of pauseEngine/resumeEngine to avoid
+    //    stopping state polling and reloading the main window.
+    const port = enginePort();
+    try {
+      await fetch(`http://localhost:${port}/api/engine/pause`, {
+        method: "POST",
+      });
+    } catch {
+      // engine may not be running
+    }
+
+    await new Promise((resolve) => setTimeout(resolve, 500));
+
+    try {
+      await fetch(`http://localhost:${port}/api/engine/resume`, {
+        method: "POST",
+      });
+    } catch {
+      // engine may not be running
+    }
+  }
 });
 
 app.on("window-all-closed", () => {
