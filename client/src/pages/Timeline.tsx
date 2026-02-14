@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { TimelineChart } from "../components/TimelineChart";
 import { api } from "../lib/api";
-import type { HistoryEntry, NotificationEntry } from "../lib/types";
+import type { BucketedSegment, NotificationEntry } from "../lib/types";
 
 const START_HOUR = 0;
 const END_HOUR = 24;
@@ -36,7 +36,7 @@ function buildTimeRange(date: Date): { start: number; end: number } {
 }
 
 export function Timeline() {
-  const [history, setHistory] = useState<HistoryEntry[]>([]);
+  const [segments, setSegments] = useState<BucketedSegment[]>([]);
   const [notifications, setNotifications] = useState<NotificationEntry[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,11 +50,11 @@ export function Timeline() {
       setError(null);
       try {
         const range = buildTimeRange(selectedDate);
-        const [historyData, notifsData] = await Promise.all([
-          api.getHistory(range),
+        const [segmentsData, notifsData] = await Promise.all([
+          api.getHistoryBucketed(range),
           api.getNotifications(range),
         ]);
-        setHistory(historyData);
+        setSegments(segmentsData);
         setNotifications(notifsData);
       } catch (err) {
         console.error("Failed to fetch timeline data:", err);
@@ -162,9 +162,9 @@ export function Timeline() {
             <h2 className="text-sm font-semibold text-gray-400 mb-4">
               状態タイムライン
             </h2>
-            {history.length > 0 ? (
+            {segments.length > 0 ? (
               <TimelineChart
-                history={history}
+                segments={segments}
                 notifications={notifications}
                 startHour={START_HOUR}
                 endHour={END_HOUR}
