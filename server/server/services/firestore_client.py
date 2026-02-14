@@ -37,6 +37,18 @@ class InMemoryStore:
                     return user_id, doc
         return None, None
 
+    async def list_documents(self, *collection_path: str) -> list[str]:
+        """List document IDs under a collection path."""
+        prefix = self._key(*collection_path) + "/"
+        doc_ids: list[str] = []
+        for key in self._data:
+            if key.startswith(prefix):
+                remainder = key[len(prefix):]
+                doc_id = remainder.split("/")[0]
+                if doc_id and doc_id not in doc_ids:
+                    doc_ids.append(doc_id)
+        return doc_ids
+
 
 class FirestoreClient:
     """Firestore wrapper with automatic fallback to in-memory store."""
@@ -209,3 +221,19 @@ class FirestoreClient:
             .get()
         )
         return doc.to_dict() if doc.exists else None
+
+    async def list_report_dates(self, user_id: str) -> list[str]:
+        """List available report dates for a user, sorted descending."""
+        if self._use_memory:
+            dates = await self._memory.list_documents("users", user_id, "reports")
+        else:
+            docs: list[str] = []
+            collection_ref = (
+                self._firestore_db.collection("users")
+                .document(user_id)
+                .collection("reports")
+            )
+            async for doc in collection_ref.stream():
+                docs.append(doc.id)
+            dates = docs
+        return sorted(dates, reverse=True)
