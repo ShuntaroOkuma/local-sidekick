@@ -71,7 +71,7 @@ _MODEL_REGISTRY: dict[str, dict] = {
         "gguf": _GGUF_3B,
     },
     "qwen2.5-7b": {
-        "name": "推奨モデル (7B)",
+        "name": "高性能モデル (7B)",
         "description": "高精度。より正確な状態判定",
         "size_gb": 4.7,
         "tier": "recommended",

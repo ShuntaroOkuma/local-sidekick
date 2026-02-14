@@ -11,7 +11,7 @@ interface ModelSectionProps {
 const TIER_OPTIONS: { value: ModelTier; label: string }[] = [
   { value: "none", label: "無効" },
   { value: "lightweight", label: "軽量 (3B)" },
-  { value: "recommended", label: "推奨 (7B)" },
+  { value: "recommended", label: "高性能 (7B)" },
 ];
 
 const TIER_DESCRIPTIONS: Record<ModelTier, string> = {
@@ -81,13 +81,6 @@ export function ModelSection({ currentTier, onTierChange }: ModelSectionProps) {
             選択中のモデルがダウンロードされていません。下のボタンからダウンロードしてください。
           </p>
         </div>
-      )}
-
-      {/* Note about engine restart */}
-      {currentTier !== "none" && (
-        <p className="text-xs text-gray-600">
-          ※ モデル変更はアプリ再起動後に反映されます
-        </p>
       )}
 
       {/* Model cards */}

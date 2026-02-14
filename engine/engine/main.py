@@ -434,11 +434,25 @@ async def _notification_loop() -> None:
 
 async def apply_config(new_config: EngineConfig) -> None:
     """Apply a new config to the running engine (called from settings API)."""
-    global _config, _notification_engine, _llm_load_failed
+    global _config, _notification_engine, _llm_load_failed, _shared_llm_backend
 
+    old_tier = _config.model_tier
     _config = new_config
     # Reset LLM load failure flag so tier change can trigger a new load attempt
     _llm_load_failed = False
+
+    # Hot-swap LLM when model_tier changes
+    if new_config.model_tier != old_tier and _shared_llm_backend is not None:
+        logger.info(
+            "Model tier changed (%s -> %s), unloading current model...",
+            old_tier, new_config.model_tier,
+        )
+        try:
+            await asyncio.to_thread(_shared_llm_backend.unload)
+        except Exception as e:
+            logger.warning("Error unloading LLM during tier change: %s", e)
+        _shared_llm_backend = None
+
     # Recreate notification engine with updated settings, preserving cooldown state
     if _notification_engine is not None:
         old_cooldowns = _notification_engine._last_notification_time.copy()
