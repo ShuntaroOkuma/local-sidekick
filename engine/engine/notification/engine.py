@@ -32,7 +32,7 @@ class Notification:
 _MESSAGES = {
     "drowsy": "Drowsiness detected. Consider taking a short break or stretching.",
     "distracted": "You seem distracted. Try focusing on one task at a time.",
-    "over_focus": "You have been focused for over 80 minutes. Take a 5-minute break.",
+    "over_focus": "You have been focused for over 90 minutes. Take a 5-minute break.",
 }
 
 
