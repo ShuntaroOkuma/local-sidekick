@@ -93,6 +93,37 @@ xattr -cr /Applications/Local\ Sidekick.app
 # 4. Launch the app
 ```
 
+## リリース更新（DMG の最新化）
+
+コードを更新した後、GitHub Release の DMG を最新化するには GitHub Actions の `Build Desktop App` ワークフローを手動実行します。
+
+### GitHub CLI で実行する場合
+
+```bash
+# macOS 向け DMG をビルドしてリリースを作成
+gh workflow run build-desktop.yml \
+  --field platforms=macos \
+  --field version=v0.2.0
+
+# 実行状況を確認
+gh run list --workflow=build-desktop.yml --limit=1
+gh run watch
+```
+
+### GitHub Web UI で実行する場合
+
+1. リポジトリの **Actions** タブを開く
+2. 左メニューから **Build Desktop App** を選択
+3. **Run workflow** をクリック
+4. `platforms` を選択（通常は `macos`）、`version` にバージョン（例: `v0.2.0`）を入力
+5. **Run workflow** で実行
+
+### 注意事項
+
+- `version` を空にするとアーティファクトのみ作成され、GitHub Release は作成されません（テストビルド用）
+- `version` を指定すると、ビルド完了後に自動で GitHub Release が作成され、DMG がアップロードされます
+- バージョン番号は既存のタグと重複しないように注意してください
+
 ## Quick Start (Development)
 
 ### Prerequisites
