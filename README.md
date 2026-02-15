@@ -1,5 +1,7 @@
 # Local Sidekick
 
+[日本語版はこちら](README.ja.md)
+
 An always-on macOS observer that detects drowsiness, focus, and distraction using on-device camera analysis and PC usage monitoring -- then nudges you back on track with timely notifications and a daily AI-generated report.
 
 ## Architecture
