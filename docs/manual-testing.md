@@ -246,13 +246,13 @@ cd client && npm run dev
 # focused: アバターが退場して非表示になる
 curl -X POST http://localhost:18080/test/state/focused
 
-# drowsy: アバターがうとうと（ZZZ表示）
+# drowsy: アバターがニコニコ見ている
 curl -X POST http://localhost:18080/test/state/drowsy
 
 # distracted: アバターが跳ねて注意喚起
 curl -X POST http://localhost:18080/test/state/distracted
 
-# away: アバターが覗き込み
+# away: アバターがうとうと（ZZZ表示）
 curl -X POST http://localhost:18080/test/state/away
 ```
 

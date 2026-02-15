@@ -1,4 +1,6 @@
 import { NavLink, Outlet } from "react-router-dom";
+import { useEngineState } from "../hooks/useEngineState";
+import type { UserState } from "../lib/types";
 
 interface NavItem {
   path: string;
@@ -13,16 +15,38 @@ const NAV_ITEMS: NavItem[] = [
   { path: "/settings", label: "Settings", icon: "⚙️" },
 ];
 
+const STATE_COLORS: Record<UserState | "disconnected", string> = {
+  focused: "bg-green-500",
+  drowsy: "bg-red-500",
+  distracted: "bg-yellow-400",
+  away: "bg-gray-400",
+  disconnected: "bg-gray-600",
+};
+
+const STATE_LABELS: Record<UserState | "disconnected", string> = {
+  focused: "Focused",
+  drowsy: "Drowsy",
+  distracted: "Distracted",
+  away: "Away",
+  disconnected: "Disconnected",
+};
+
 export function Layout() {
+  const { state, connected } = useEngineState();
+  const currentState: UserState | "disconnected" = connected && state ? state.state : "disconnected";
+
   return (
     <div className="flex h-screen bg-gray-900">
       {/* Sidebar */}
       <nav className="w-16 bg-gray-950 border-r border-gray-800 flex flex-col items-center gap-1">
         {/* Titlebar drag area (traffic lights region) */}
         <div className="titlebar-drag w-full h-12 shrink-0" />
-        {/* App icon */}
-        <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-blue-500 to-purple-600 flex items-center justify-center text-white font-bold text-sm mb-4">
-          LS
+        {/* Status indicator */}
+        <div className="mb-4 flex flex-col items-center gap-1" title={STATE_LABELS[currentState]}>
+          <span className="text-[10px] font-semibold tracking-widest text-gray-500" style={{ writingMode: "vertical-rl" }}>
+            SIDEKICK
+          </span>
+          <div className={`w-1.5 h-1.5 rounded-full ${STATE_COLORS[currentState]} transition-colors duration-500`} />
         </div>
 
         {/* Nav items */}
