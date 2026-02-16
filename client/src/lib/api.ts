@@ -139,6 +139,8 @@ export const api = {
       body: JSON.stringify({ email, password }),
     }),
 
+  // Registration is disabled on the server side.
+  // cloudRegister is kept for reference but will return 403.
   cloudRegister: (email: string, password: string): Promise<CloudAuthResponse> =>
     request("/api/cloud/register", {
       method: "POST",
