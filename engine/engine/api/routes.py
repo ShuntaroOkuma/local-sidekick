@@ -21,6 +21,7 @@ Endpoints:
 from __future__ import annotations
 
 import datetime
+import json
 import logging
 import time
 from typing import Optional
@@ -214,6 +215,12 @@ async def get_daily_stats(
     # Try to get cached summary first
     summary = await store.get_daily_summary(date)
     if summary is not None:
+        # Parse report_text JSON into report object for frontend
+        if summary.get("report_text"):
+            try:
+                summary["report"] = json.loads(summary["report_text"])
+            except (json.JSONDecodeError, TypeError):
+                pass
         return summary
 
     # Compute from state_log
@@ -374,17 +381,24 @@ async def generate_report(
         if report is not None:
             stats["report"] = report
             stats["report_source"] = "cloud"
+            # Save to local SQLite
+            stats["report_text"] = json.dumps(report, ensure_ascii=False)
+            await store.save_daily_summary(stats)
             return stats
         logger.warning("Cloud report failed, falling back to local")
 
     # Local fallback
-    stats["report"] = {
+    report = {
         "summary": f"本日の作業統計: 集中 {stats.get('focused_minutes', 0):.0f}分",
         "highlights": [],
         "concerns": [],
         "tomorrow_tip": "明日も頑張りましょう！",
     }
+    stats["report"] = report
     stats["report_source"] = "local"
+    # Save to local SQLite
+    stats["report_text"] = json.dumps(report, ensure_ascii=False)
+    await store.save_daily_summary(stats)
     return stats
 
 
