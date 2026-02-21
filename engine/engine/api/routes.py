@@ -220,7 +220,11 @@ async def get_daily_stats(
             try:
                 summary["report"] = json.loads(summary["report_text"])
             except (json.JSONDecodeError, TypeError):
-                pass
+                logger.warning(
+                    "Failed to parse report_text from daily summary for date %s",
+                    date,
+                    exc_info=True,
+                )
         return summary
 
     # Compute from state_log
