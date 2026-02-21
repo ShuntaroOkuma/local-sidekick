@@ -60,6 +60,14 @@ _config: EngineConfig = EngineConfig()
 _latest_camera_snapshot: Optional[dict] = None  # TrackerSnapshot.to_dict()
 _latest_pc_snapshot: Optional[dict] = None  # UsageSnapshot.to_dict()
 
+# Monotonic timestamps of when each snapshot was last updated.
+# Used by the integration loop to invalidate stale data.
+_camera_snapshot_time: float = 0.0
+_pc_snapshot_time: float = 0.0
+
+# Maximum age (seconds) before a snapshot is considered stale.
+_SNAPSHOT_MAX_AGE_SECONDS = 30.0
+
 # Components
 _history_store = HistoryStore()
 _notification_engine: Optional[NotificationEngine] = None
@@ -148,15 +156,18 @@ async def _camera_loop() -> None:
     Runs at ~5fps (200ms interval) for frame capture. Stores raw snapshots
     every estimation_interval seconds for the integration loop to classify.
     Reads from global _config so settings changes take effect dynamically.
+
+    Frames that are too dark (lid closed, camera covered) are silently
+    skipped so no snapshot is produced for the integration loop.
     """
-    global _latest_camera_snapshot
+    global _latest_camera_snapshot, _camera_snapshot_time
 
     if not _config.camera_enabled:
         logger.info("Camera disabled in config, skipping camera loop.")
         return
 
     try:
-        from engine.camera.capture import CameraCapture
+        from engine.camera.capture import CameraCapture, is_frame_too_dark
         from engine.camera.features import FeatureTracker, extract_frame_features
     except ImportError as e:
         logger.error("Failed to import camera modules: %s", e)
@@ -205,6 +216,11 @@ async def _camera_loop() -> None:
                 await asyncio.sleep(0.5)
                 continue
 
+            # Skip dark frames (lid closed, camera covered, etc.)
+            if await asyncio.to_thread(is_frame_too_dark, frame_result.frame):
+                await asyncio.sleep(_config.camera_frame_interval)
+                continue
+
             frame_features = extract_frame_features(
                 frame_result.landmarks,
                 frame_result.timestamp,
@@ -215,6 +231,7 @@ async def _camera_loop() -> None:
             if now - last_estimation >= _config.estimation_interval:
                 last_estimation = now
                 _latest_camera_snapshot = snapshot.to_dict()
+                _camera_snapshot_time = now
 
             await asyncio.sleep(_config.camera_frame_interval)
     finally:
@@ -263,6 +280,7 @@ async def _pc_monitor_loop() -> None:
                     continue
 
                 _latest_pc_snapshot = snapshot.to_dict()
+                _pc_snapshot_time = now
 
             await asyncio.sleep(_config.pc_poll_interval)
     finally:
@@ -327,6 +345,13 @@ async def _get_final_classification(
         return classify_unified_fallback(camera_snap, pc_snap)
 
 
+def _is_pc_idle(pc_snap: Optional[dict]) -> bool:
+    """Check whether the PC snapshot indicates no user activity."""
+    if pc_snap is None:
+        return True
+    return pc_snap.get("is_idle", False)
+
+
 async def _integration_loop() -> None:
     """Background task: unified classification + history recording.
 
@@ -334,18 +359,43 @@ async def _integration_loop() -> None:
     classification (rule-based -> LLM -> fallback) to produce a single
     integrated state. Notification checks are handled by _notification_loop.
     Reads from global _config so settings changes take effect dynamically.
+
+    Recording is skipped entirely when detection data is insufficient
+    (e.g. camera unavailable AND PC idle) to avoid polluting the database
+    with false records during sleep / Power Nap.
     """
     while _should_monitor:
         if _paused:
             await asyncio.sleep(1.0)
             continue
 
-        camera_snap = _latest_camera_snapshot
-        pc_snap = _latest_pc_snapshot
+        now = time.monotonic()
 
-        # Early exit: avoid unnecessary LLM/rule calls when no data exists.
-        # classify_unified also handles this, but skipping here saves a sleep cycle.
+        # --- Stale snapshot invalidation ---
+        # Treat snapshots older than _SNAPSHOT_MAX_AGE_SECONDS as unavailable
+        # so data from before sleep is never reused after a brief wake.
+        camera_snap = _latest_camera_snapshot
+        if camera_snap is not None and now - _camera_snapshot_time > _SNAPSHOT_MAX_AGE_SECONDS:
+            camera_snap = None
+
+        pc_snap = _latest_pc_snapshot
+        if pc_snap is not None and now - _pc_snapshot_time > _SNAPSHOT_MAX_AGE_SECONDS:
+            pc_snap = None
+
+        # Early exit: no data at all
         if camera_snap is None and pc_snap is None:
+            await asyncio.sleep(_config.integration_interval)
+            continue
+
+        # --- Skip recording when detection is unreliable ---
+        # Camera unavailable (dark frame / not open) AND PC idle
+        # → nothing meaningful to detect, skip entirely.
+        if camera_snap is None and _is_pc_idle(pc_snap):
+            logger.debug(
+                "Skipping record: camera unavailable and PC idle "
+                "(idle_seconds=%.0f)",
+                pc_snap.get("idle_seconds", -1) if pc_snap else -1,
+            )
             await asyncio.sleep(_config.integration_interval)
             continue
 
@@ -464,6 +514,7 @@ async def apply_config(new_config: EngineConfig) -> None:
 async def start_monitoring() -> None:
     """Start all monitoring background tasks."""
     global _should_monitor, _config, _latest_camera_snapshot, _latest_pc_snapshot
+    global _camera_snapshot_time, _pc_snapshot_time
 
     if _should_monitor:
         return
@@ -472,6 +523,8 @@ async def start_monitoring() -> None:
     _should_monitor = True
     _latest_camera_snapshot = None
     _latest_pc_snapshot = None
+    _camera_snapshot_time = 0.0
+    _pc_snapshot_time = 0.0
 
     set_engine_state("monitoring", True)
     set_engine_state("start_time", time.time())
@@ -502,6 +555,7 @@ async def pause_monitoring() -> None:
 async def resume_monitoring() -> None:
     """Resume monitoring after pause. Resets notification cooldown timers."""
     global _paused, _latest_camera_snapshot, _latest_pc_snapshot
+    global _camera_snapshot_time, _pc_snapshot_time
 
     if not _paused:
         return
@@ -509,6 +563,8 @@ async def resume_monitoring() -> None:
     # Reset latest snapshots so stale data from before sleep isn't used
     _latest_camera_snapshot = None
     _latest_pc_snapshot = None
+    _camera_snapshot_time = 0.0
+    _pc_snapshot_time = 0.0
 
     # Reset notification engine cooldown timers so sleep duration
     # doesn't interfere with post-resume notification checks

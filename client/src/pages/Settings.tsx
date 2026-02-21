@@ -260,13 +260,6 @@ export function Settings() {
                       >
                         {cloudLoading ? "処理中..." : "ログイン"}
                       </button>
-                      <button
-                        onClick={() => handleCloudAuth("register")}
-                        disabled={cloudLoading || !cloudEmail || !cloudPassword}
-                        className="px-4 py-1.5 bg-gray-700 hover:bg-gray-600 disabled:bg-gray-800 disabled:text-gray-600 text-sm text-gray-300 rounded-lg transition-colors"
-                      >
-                        {cloudLoading ? "処理中..." : "新規登録"}
-                      </button>
                     </div>
                   </div>
                 )}

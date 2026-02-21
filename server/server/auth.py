@@ -82,32 +82,14 @@ router = APIRouter()
 
 @router.post("/register", response_model=TokenResponse)
 async def register(body: UserRegister):
-    """Register a new user with email and password."""
-    db = get_firestore()
+    """Register a new user with email and password.
 
-    # Check if user already exists
-    existing_id, _ = await db.find_user_by_email(body.email)
-    if existing_id is not None:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="User with this email already exists",
-        )
-
-    user_id = str(uuid.uuid4())
-    hashed_pw = pwd_context.hash(body.password)
-
-    await db.create_user(
-        user_id,
-        {
-            "email": body.email,
-            "password_hash": hashed_pw,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-        },
+    Registration is disabled. Users must be created manually.
+    """
+    raise HTTPException(
+        status_code=status.HTTP_403_FORBIDDEN,
+        detail="Registration is disabled",
     )
-
-    token = _create_token(user_id, body.email)
-    logger.info("User registered: %s", user_id)
-    return TokenResponse(access_token=token)
 
 
 @router.post("/login", response_model=TokenResponse)

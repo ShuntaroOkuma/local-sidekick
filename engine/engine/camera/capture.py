@@ -40,6 +40,11 @@ DEFAULT_HEIGHT = 480
 DEFAULT_CAMERA_INDEX = 0
 JPEG_QUALITY = 80
 
+# Frame brightness threshold (0-255 grayscale mean).
+# Below this value the frame is considered too dark for meaningful detection
+# (e.g. lid closed, camera covered, completely dark room).
+DARK_FRAME_BRIGHTNESS_THRESHOLD = 10
+
 # Default model path (uses MODELS_DIR from config, respects SIDEKICK_MODELS_DIR env var)
 _DEFAULT_MODEL_PATH = MODELS_DIR / "face_landmarker.task"
 _MODEL_DOWNLOAD_URL = (
@@ -72,6 +77,19 @@ class FrameResult:
     landmarks: Optional[tuple[Landmark, ...]]
     timestamp: float
     face_detected: bool
+
+
+def is_frame_too_dark(
+    frame: np.ndarray,
+    threshold: int = DARK_FRAME_BRIGHTNESS_THRESHOLD,
+) -> bool:
+    """Check if a BGR frame is too dark for meaningful face detection.
+
+    Converts to grayscale and checks the mean pixel intensity.
+    Returns True when the frame is essentially black (lid closed, etc.).
+    """
+    gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+    return float(np.mean(gray)) < threshold
 
 
 class CameraCapture:
